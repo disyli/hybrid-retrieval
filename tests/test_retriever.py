@@ -19,9 +19,13 @@ class RetrieverTest(unittest.TestCase):
 
     def test_bm25_prefers_exact_term(self):
         retriever = HybridRetriever(DOCS)
-        scores = retriever._bm25_scores(["bm25"])
+        scores = retriever._bm25_scores("bm25")
         best = max(range(len(DOCS)), key=lambda i: scores[i])
         self.assertEqual(DOCS[best].id, "b")
+
+    def test_vector_scores_length(self):
+        retriever = HybridRetriever(DOCS)
+        self.assertEqual(len(retriever._vector_scores("向量检索")), len(DOCS))
 
 
 if __name__ == "__main__":

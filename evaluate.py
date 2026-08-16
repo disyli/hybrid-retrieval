@@ -36,11 +36,10 @@ def main() -> None:
         total_recall = 0.0
         total_mrr = 0.0
         for q in queries:
-            qtok = tokenize(q["query"])
             if mode == "bm25":
-                scores = retriever._bm25_scores(qtok)
+                scores = retriever._bm25_scores(q["query"])
             elif mode == "vector":
-                scores = retriever._vector_scores(qtok)
+                scores = retriever._vector_scores(q["query"])
             else:
                 docs = retriever.retrieve(q["query"], top_k=k)
                 hits = [d.id for d in docs]

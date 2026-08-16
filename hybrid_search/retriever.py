@@ -1,64 +1,66 @@
-"""混合检索器：BM25 + 稀疏向量，RRF 融合，可选标题加权。"""
+"""混合检索器：BM25 + 向量检索，RRF 融合，重排器排序。"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from .bm25 import BM25
 from .embedder import HashEmbedder
+from .models import Document
+from .reranker import Reranker, RuleReranker
 from .tokenize import tokenize
-
-
-@dataclass
-class Document:
-    id: str
-    title: str
-    text: str
+from .vector_index import make_index
 
 
 class HybridRetriever:
-    def __init__(self, documents: list[Document], embedder=None, rrf_k: int = 60) -> None:
+    def __init__(
+        self,
+        documents: list[Document],
+        embedder=None,
+        index_backend: str = "auto",
+        reranker: Reranker | None = None,
+        rrf_k: int = 60,
+        candidate_k: int = 20,
+    ) -> None:
         self.documents = documents
         self.embedder = embedder or HashEmbedder()
+        self.reranker = reranker or RuleReranker()
         self.rrf_k = rrf_k
+        self.candidate_k = candidate_k
         self.tokens = [tokenize(d.title + " " + d.text) for d in documents]
         self.bm25 = BM25(self.tokens)
-        self.vecs = [self.embedder.embed(toks) for toks in self.tokens]
+        vectors = [self.embedder.embed(d.title + " " + d.text) for d in documents]
+        self.index = make_index(vectors, backend=index_backend)
 
-    def _bm25_scores(self, qtok: list[str]) -> list[float]:
+    def _bm25_scores(self, query_text: str) -> list[float]:
+        qtok = tokenize(query_text)
         return [self.bm25.score(qtok, i) for i in range(len(self.documents))]
 
-    def _vector_scores(self, qtok: list[str]) -> list[float]:
-        qvec = self.embedder.embed(qtok)
-        return [self.embedder.cosine(qvec, v) for v in self.vecs]
+    def _vector_scores(self, query_text: str) -> list[float]:
+        qvec = self.embedder.embed(query_text)
+        scores = [0.0] * len(self.documents)
+        for idx, score in self.index.search(qvec, len(self.documents)):
+            scores[idx] = score
+        return scores
 
-    @staticmethod
-    def _rrf_rank_scores(scores: list[float]) -> list[float]:
-        order = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
-        ranked = [0.0] * len(scores)
-        for rank, idx in enumerate(order):
-            if scores[idx] > 0:
-                ranked[idx] = 1.0 / (rank + 1)
-        return ranked
+    def retrieve(self, query: str, top_k: int = 5) -> list[Document]:
+        n = len(self.documents)
+        k = min(self.candidate_k, n)
 
-    def retrieve(self, query: str, top_k: int = 5, rerank: bool = True) -> list[Document]:
-        qtok = tokenize(query)
-        bm25 = self._bm25_scores(qtok)
-        vec = self._vector_scores(qtok)
+        bm25 = self._bm25_scores(query)
+        bm25_order = sorted(range(n), key=lambda i: bm25[i], reverse=True)[:k]
 
-        rrf_bm25 = self._rrf_rank_scores(bm25)
-        rrf_vec = self._rrf_rank_scores(vec)
-        fused = [self.rrf_k + a + b for a, b in zip(rrf_bm25, rrf_vec)]
+        vec_hits = self.index.search(self.embedder.embed(query), k)
 
-        if rerank:
-            qset = set(qtok)
-            for i, doc in enumerate(self.documents):
-                title_tokens = set(tokenize(doc.title))
-                if qset & title_tokens:
-                    fused[i] += 0.1  # 标题命中轻量加权
+        rrf: dict[int, float] = {}
+        for rank, idx in enumerate(bm25_order, start=1):
+            rrf[idx] = rrf.get(idx, 0.0) + 1.0 / (self.rrf_k + rank)
+        for rank, (idx, _) in enumerate(vec_hits, start=1):
+            rrf[idx] = rrf.get(idx, 0.0) + 1.0 / (self.rrf_k + rank)
 
-        order = sorted(range(len(fused)), key=lambda i: fused[i], reverse=True)
-        return [self.documents[i] for i in order[:top_k]]
+        cand_idx = sorted(rrf, key=lambda i: rrf[i], reverse=True)
+        candidates = [self.documents[i] for i in cand_idx]
+        scores = [rrf[i] for i in cand_idx]
+        ranked = self.reranker.rerank(query, candidates, scores)
+        return ranked[:top_k]
 
     @staticmethod
     def from_jsonl(path: str) -> "HybridRetriever":
