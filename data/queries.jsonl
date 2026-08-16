@@ -1,0 +1,8 @@
+{"query": "BM25 和向量检索怎么合并", "relevant": ["d03", "d15"]}
+{"query": "代码仓库怎么接入知识库", "relevant": ["d05", "d04"]}
+{"query": "模型不主动调用工具怎么办", "relevant": ["d09", "d07"]}
+{"query": "多实例并发导入怎么加锁", "relevant": ["d11"]}
+{"query": "中文分词切错字怎么办", "relevant": ["d12"]}
+{"query": "分页排序不稳定怎么解决", "relevant": ["d13"]}
+{"query": "语义相近但用词不同怎么召回", "relevant": ["d02", "d16"]}
+{"query": "检索结果怎么重排", "relevant": ["d17", "d03"]}
