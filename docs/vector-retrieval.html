@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>向量检索语义图解</title>
+<style>
+:root{
+  --bg:#0b0f17; --card:#121826; --card2:#0e1420; --line:#1f2a3a;
+  --txt:#e6eaf2; --dim:#8b95a7; --faint:#5b6678;
+  --amber:#fbbf24; --violet:#a78bfa; --cyan:#22d3ee; --green:#34d399; --rose:#fb7185;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:76px}
+body{background:var(--bg);color:var(--txt);font:16px/1.75 -apple-system,"SF Pro Text","PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+::selection{background:rgba(167,139,250,.28)}
+.wrap{max-width:1060px;margin:0 auto;padding:0 24px}
+nav{position:sticky;top:0;z-index:50;background:rgba(11,15,23,.82);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;gap:6px;height:56px;overflow-x:auto;scrollbar-width:none}
+nav .wrap::-webkit-scrollbar{display:none}
+nav .logo{font-weight:700;letter-spacing:.5px;margin-right:10px;white-space:nowrap}
+nav .logo b{color:var(--violet)}
+nav a{color:var(--dim);text-decoration:none;font-size:12.5px;font-family:var(--mono);padding:5px 10px;border-radius:99px;border:1px solid transparent;white-space:nowrap;transition:.2s}
+nav a:hover,nav a.on{color:var(--txt);border-color:var(--line);background:var(--card)}
+header{padding:72px 0 40px;position:relative;overflow:hidden}
+header::before{content:"";position:absolute;inset:-40% -20% auto;height:520px;background:
+  radial-gradient(600px 260px at 18% 30%,rgba(167,139,250,.12),transparent 60%),
+  radial-gradient(600px 260px at 82% 20%,rgba(34,211,238,.12),transparent 60%),
+  radial-gradient(700px 300px at 50% 90%,rgba(52,211,153,.10),transparent 60%);pointer-events:none}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:3px;color:var(--violet);text-transform:uppercase}
+h1{font-size:clamp(30px,4.6vw,46px);font-weight:800;letter-spacing:-.5px;margin:10px 0 14px}
+h1 .grad{background:linear-gradient(92deg,var(--violet),var(--cyan) 45%,var(--green) 80%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--dim);max-width:800px;font-size:16.5px}
+section.mod{margin:56px 0}
+.mod-head{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:6px}
+.num{font-family:var(--mono);font-size:13px;color:var(--faint);letter-spacing:2px}
+h3{font-size:24px;font-weight:800;letter-spacing:-.3px}
+h3 code{font-family:var(--mono);font-size:19px;font-weight:600;color:var(--cyan)}
+.tagline{color:var(--dim);margin-bottom:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+@media(max-width:920px){.grid{grid-template-columns:1fr}}
+h4{font-size:13px;letter-spacing:1.5px;font-family:var(--mono);color:var(--dim);margin:0 0 12px;text-transform:uppercase}
+p code,li code,td code{font-family:var(--mono);font-size:12.5px;background:var(--card2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--cyan)}
+.mini{margin-top:14px;font-size:13px;color:var(--dim);border-left:2px solid var(--violet);padding:4px 0 4px 14px}
+.mini b{color:var(--txt)}
+.formula{background:var(--card2);border:1px dashed var(--line);border-radius:12px;padding:18px;margin:14px 0;text-align:center;font-family:Georgia,'Times New Roman',serif;font-size:18px;font-style:italic;position:relative}
+.formula .cap{display:block;font-family:var(--mono);font-style:normal;font-size:11px;color:var(--faint);margin-top:10px;letter-spacing:1px}
+.frac{display:inline-block;vertical-align:middle;text-align:center;margin:0 3px}
+.frac .top{display:block;padding:0 8px 2px;border-bottom:1.5px solid var(--txt)}
+.frac .bot{display:block;padding:2px 8px 0}
+.f-cyan{color:var(--cyan)} .f-rose{color:var(--rose)} .f-green{color:var(--green)} .f-violet{color:var(--violet)} .f-amber{color:var(--amber)}
+.code{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:18px;font-family:var(--mono);font-size:13px;line-height:1.9;overflow-x:auto}
+.code .ln{display:block;color:var(--dim);white-space:pre}
+.code .k{color:var(--violet)} .code .s{color:var(--amber)} .code .c{color:var(--faint);font-style:italic}
+.code .fn{color:var(--cyan)} .code .num2{color:var(--rose)}
+.code .hl-ln{background:rgba(167,139,250,.08);border-left:2px solid var(--violet);display:block;padding-left:8px;margin-left:-10px;white-space:pre;border-radius:0 6px 6px 0}
+table{width:100%;border-collapse:collapse;margin-top:6px;font-size:13.5px}
+th{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--faint);text-align:center;padding:8px 10px;border-bottom:1px solid var(--line);text-transform:uppercase}
+th:first-child,td:first-child{text-align:left}
+td{padding:9px 10px;border-bottom:1px solid rgba(31,42,58,.6);color:var(--dim);text-align:center;font-family:var(--mono)}
+td:first-child{color:var(--txt);font-weight:700}
+tr:last-child td{border-bottom:none}
+td.hit{color:var(--amber);font-weight:700}
+td.num3{color:var(--cyan);font-weight:700}
+td.sum{color:var(--green);font-weight:800;font-size:15px}
+tr.win td{background:rgba(52,211,153,.06)}
+.stageflow{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;margin-top:6px}
+.stagenode{flex:1 1 180px;border:1px solid var(--line);background:var(--card2);border-radius:12px;padding:14px;border-top:2px solid var(--violet)}
+.stagenode.q{border-top-color:var(--green)} .stagenode.m{border-top-color:var(--rose)}
+.stagenode .t{font-weight:700;font-size:14px}
+.stagenode .d{font-size:12.5px;color:var(--dim);font-family:var(--mono);margin-top:4px;line-height:1.7}
+.embcard{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:760px){.embcard{grid-template-columns:1fr}}
+.emb{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:16px}
+.emb .ttl{font-weight:700;font-size:15px}
+.emb .sub2{font-family:var(--mono);font-size:11.5px;color:var(--faint);margin:2px 0 10px}
+.emb ul{list-style:none;font-size:13.5px;color:var(--dim);line-height:2}
+.emb ul b{color:var(--txt)}
+.vecviz{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.vecviz i{width:10px;height:22px;border-radius:3px;background:var(--line)}
+.vecviz i.on{background:linear-gradient(180deg,rgba(167,139,250,.4),rgba(167,139,250,.9))}
+.vecviz i.amb{background:linear-gradient(180deg,rgba(251,191,36,.4),rgba(251,191,36,.9))}
+.steps{font-family:var(--mono);font-size:13px;color:var(--dim);line-height:2.1}
+.steps b{color:var(--txt)}
+.steps .hl{color:var(--violet)}
+.steps .ok{color:var(--green)}
+.steps .no{color:var(--rose)}
+.scorechart{margin-top:10px}
+.srow{display:grid;grid-template-columns:44px 1fr 90px;gap:10px;align-items:center;margin:10px 0;font-family:var(--mono);font-size:12.5px;color:var(--dim)}
+.srow .lab{color:var(--txt);font-weight:700}
+.track{position:relative;height:26px;background:var(--card2);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.sbar{position:absolute;left:0;top:0;bottom:0;border-radius:7px;width:0;transition:width 1s cubic-bezier(.2,.7,.2,1);background:linear-gradient(90deg,rgba(167,139,250,.3),rgba(167,139,250,.85));display:flex;align-items:center}
+.sbar.c2{background:linear-gradient(90deg,rgba(34,211,238,.3),rgba(34,211,238,.75))}
+.srow .v{color:var(--green);font-weight:700}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin:10px 0 0;font-size:12.5px;color:var(--dim);font-family:var(--mono)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px}
+@media(max-width:760px){.vs{grid-template-columns:1fr}}
+.vcase{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:16px}
+.vcase .q{font-weight:700;font-size:14.5px}
+.vcase .r{font-size:13px;color:var(--dim);margin-top:8px;line-height:1.9}
+.vcase .r b.win{color:var(--green)} .vcase .r b.lose{color:var(--rose)}
+.vcase.winner-b{border-top:2px solid var(--amber)} .vcase.winner-v{border-top:2px solid var(--violet)}
+.footnote{margin-top:56px;padding:26px 0 60px;border-top:1px solid var(--line);color:var(--faint);font-size:13px;font-family:var(--mono)}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <span class="logo">vector<b>·</b>语义检索</span>
+  <a href="#pos">链路定位</a><a href="#geo">几何直觉</a><a href="#emb">嵌入器</a><a href="#cos">余弦</a><a href="#code">逐行拆解</a><a href="#run">跑一遍</a><a href="#vsbm">对决BM25</a><a href="#scale">规模化</a>
+</div></nav>
+
+<header><div class="wrap">
+  <div class="kicker">Dense Retrieval · Embedding &amp; Cosine</div>
+  <h1>向量检索 <span class="grad">语义图解</span></h1>
+  <p class="sub">BM25 只认"字面"，向量检索把文本压成一个<b style="color:var(--violet)">高维语义坐标</b>：意思近的文档在空间里挨得近。查询不再翻账本对词，而是问"谁离我最近"。本页延续同一份 3 篇迷你语料，对照 <code>embedder.py</code> 与 <code>vector_index.py</code> 真实实现，把构造期、查询期一次画清。</p>
+</div></header>
+
+<div class="wrap">
+
+<!-- 00 链路定位 -->
+<section class="mod" id="pos">
+  <div class="mod-head"><span class="num">00</span><h3>向量检索在链路中的位置</h3></div>
+  <p class="tagline">与 BM25 并行跑同一查询，各自给出候选，RRF 融合后进重排器。两侧对称，只是"打分依据"完全不同。</p>
+  <div class="card">
+    <div class="stageflow">
+      <div class="stagenode">
+        <div class="t">📍 构造期 <code>__init__</code></div>
+        <div class="d">每篇文档 embed 一次<br>title + text → 512/384 维向量<br>全部向量交给 index 存成矩阵</div>
+      </div>
+      <div class="stagenode q">
+        <div class="t">⚡ 查询期 <code>_vector_scores</code></div>
+        <div class="d">查询 embed 一次 → qvec<br>index.search(qvec, k)<br>与每篇算余弦 → 排序取 top-k</div>
+      </div>
+      <div class="stagenode">
+        <div class="t">🔀 RRF 融合</div>
+        <div class="d">BM25 名次 + 向量名次<br>score += 1/(60+rank)<br>两边都靠前的文档胜出</div>
+      </div>
+      <div class="stagenode m">
+        <div class="t">🎯 重排器</div>
+        <div class="d">对融合候选精细排序<br>候选只剩 ≤20 篇<br>重排成本可控</div>
+      </div>
+    </div>
+    <p class="mini">与 BM25 的本质分工：<b>BM25 回答"哪些文档含有这些词"</b>（字面证据），<b>向量回答"哪些文档意思接近"</b>（语义证据）。一个词都不重合也能被向量召回。</p>
+  </div>
+</section>
+
+<!-- 01 几何直觉 -->
+<section class="mod" id="geo">
+  <div class="mod-head"><span class="num">01</span><h3>核心思想：语义 = 空间中的方向</h3></div>
+  <p class="tagline">嵌入模型把每段文本映射成高维空间（本库 512 维或 384 维）里的一个点。真实维度画不出来，示意图降到 2 维，机制完全一致。</p>
+  <div class="card">
+    <div class="grid">
+      <div>
+        <svg viewBox="0 0 560 400" style="width:100%;height:auto" role="img" aria-label="向量夹角示意图">
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5b6678"/></marker>
+            <marker id="ahq" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#fbbf24"/></marker>
+            <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#34d399"/></marker>
+            <marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#22d3ee"/></marker>
+            <marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8b95a7"/></marker>
+          </defs>
+          <line x1="140" y1="340" x2="520" y2="340" stroke="#5b6678" stroke-width="1.5" marker-end="url(#ah)"/>
+          <line x1="140" y1="340" x2="140" y2="40" stroke="#5b6678" stroke-width="1.5" marker-end="url(#ah)"/>
+          <text x="500" y="362" fill="#5b6678" font-size="12" font-family="ui-monospace,monospace">dim 0</text>
+          <text x="152" y="52" fill="#5b6678" font-size="12" font-family="ui-monospace,monospace">dim 1</text>
+          <circle cx="140" cy="340" r="5" fill="#e6eaf2"/>
+          <text x="120" y="362" fill="#8b95a7" font-size="13" font-family="ui-monospace,monospace">原点</text>
+          <line x1="140" y1="340" x2="358" y2="239" stroke="#fbbf24" stroke-width="2.5" marker-end="url(#ahq)"/>
+          <circle cx="358" cy="239" r="5" fill="#fbbf24"/>
+          <text x="372" y="236" fill="#fbbf24" font-size="13.5" font-weight="700" font-family="ui-monospace,monospace">q 「向量 检索」</text>
+          <line x1="140" y1="340" x2="341" y2="209" stroke="#34d399" stroke-width="2" marker-end="url(#ahg)"/>
+          <circle cx="341" cy="209" r="4.5" fill="#34d399"/>
+          <text x="356" y="198" fill="#34d399" font-size="13" font-weight="700" font-family="ui-monospace,monospace">D0 夹角≈8° cos=0.99</text>
+          <line x1="140" y1="340" x2="304" y2="165" stroke="#22d3ee" stroke-width="2" marker-end="url(#ahc)"/>
+          <circle cx="304" cy="165" r="4.5" fill="#22d3ee"/>
+          <text x="200" y="150" fill="#22d3ee" font-size="13" font-weight="700" font-family="ui-monospace,monospace">D2 夹角≈22° cos=0.93</text>
+          <line x1="140" y1="340" x2="260" y2="132" stroke="#a78bfa" stroke-width="2" marker-end="url(#ahr)"/>
+          <circle cx="260" cy="132" r="4.5" fill="#a78bfa"/>
+          <text x="182" y="112" fill="#a78bfa" font-size="13" font-weight="700" font-family="ui-monospace,monospace">D1 夹角≈35° cos=0.83</text>
+          <line x1="140" y1="340" x2="78" y2="108" stroke="#5b6678" stroke-width="1.5" stroke-dasharray="5 5"/>
+          <circle cx="78" cy="108" r="4" fill="#5b6678"/>
+          <text x="30" y="92" fill="#5b6678" font-size="12.5" font-family="ui-monospace,monospace">「美食菜谱」≈正交</text>
+          <text x="30" y="110" fill="#5b6678" font-size="12.5" font-family="ui-monospace,monospace">cos≈0</text>
+          <path d="M 235 297 A 105 105 0 0 1 243 292" fill="none" stroke="#34d399" stroke-width="1.5"/>
+          <path d="M 235 297 A 120 120 0 0 0 210 320" fill="none" stroke="#a78bfa" stroke-width="1.5"/>
+          <text x="150" y="230" fill="#8b95a7" font-size="12" font-family="ui-monospace,monospace">夹角越小</text>
+          <text x="150" y="248" fill="#8b95a7" font-size="12" font-family="ui-monospace,monospace">= 语义越近</text>
+        </svg>
+      </div>
+      <div>
+        <h4>三句话读懂图</h4>
+        <p style="font-size:14.5px;color:var(--dim);line-height:1.95">① 每篇文档、每个查询都被压成<b style="color:var(--txt)">从原点出发的一个方向</b>。方向由语义决定：讲"检索"的文档挤在同一个扇区。</p>
+        <p style="font-size:14.5px;color:var(--dim);line-height:1.95;margin-top:8px">② 相似度不看距离看<b style="color:var(--txt)">夹角</b>（余弦）。夹角小 → 方向几乎相同 → 语义接近。D0 与查询只差 8°，是最相关的文档。</p>
+        <p style="font-size:14.5px;color:var(--dim);line-height:1.95;margin-top:8px">③ 与主题无关的文本方向近似<b style="color:var(--txt)">垂直（正交）</b>，cos≈0，天然沉底——不需要"排除词表"，语义空间自己完成了过滤。</p>
+        <p class="mini">为什么用余弦不用欧氏距离：嵌入向量的"长度"受文本长度、词频影响，而"方向"才承载语义。余弦只看方向，天然免疫长度差异。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 02 嵌入器 -->
+<section class="mod" id="emb">
+  <div class="mod-head"><span class="num">02</span><h3>嵌入器：embedder.py 的两种实现</h3></div>
+  <p class="tagline">统一接口 <code>embed(text) → list[float]</code>。默认优先真语义模型，装不上自动回退到零依赖哈希方案——两种都先归一化再返回。</p>
+  <div class="card">
+    <div class="embcard">
+      <div class="emb">
+        <div class="ttl">🧠 SentenceTransformerEmbedder（首选）</div>
+        <div class="sub2">paraphrase-multilingual-MiniLM-L12-v2 · 384 维 · 懒加载</div>
+        <ul>
+          <li><b>Transformer 编码器</b>读过海量语料，懂同义、上下文</li>
+          <li>「电脑坏了」和「笔记本故障」方向几乎重合</li>
+          <li><code>normalize_embeddings=True</code> 出厂即单位向量</li>
+          <li>代价：依赖 torch，首次需下载模型权重</li>
+        </ul>
+      </div>
+      <div class="emb">
+        <div class="ttl">🎲 HashEmbedder（回退）</div>
+        <div class="sub2">字符 n-gram 哈希 · 512 维 · 零依赖可复现</div>
+        <ul>
+          <li><code>tokenize</code> 切词 → <code>Counter</code> 计数</li>
+          <li>每个词 <code>sha256</code> 哈希到 512 维中的某一格</li>
+          <li>该格累加 <code>1 + log(count)</code>，再整体 L2 归一化</li>
+          <li>仍是"字面相似"：好处是离线可复现、确定性强</li>
+        </ul>
+        <div class="vecviz"><i class="amb"></i><i></i><i></i><i class="amb"></i><i></i><i></i><i></i><i class="amb"></i><i></i><i></i><i></i><i></i><i class="amb"></i><i></i><i></i><i></i></div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:6px">同一词的多次出现落在同一格 → 值升高（琥珀格）</div>
+      </div>
+    </div>
+    <div class="code" style="margin-top:14px"><span class="ln"><span class="k">def</span> <span class="fn">make_embedder</span>(prefer_semantic=<span class="num2">True</span>):</span>
+<span class="ln">    <span class="k">if</span> prefer_semantic:</span>
+<span class="ln">        <span class="k">try</span>: <span class="k">return</span> SentenceTransformerEmbedder()</span>
+<span class="ln">        <span class="k">except</span> Exception: <span class="k">pass</span>          <span class="c"># 没装 torch/网络不通 → 静默降级</span></span>
+<span class="ln">    <span class="k">return</span> HashEmbedder()          <span class="c"># 保证任何环境都能跑通</span></span></div>
+    <p class="mini">教学库的取舍：<b>接口稳定优先</b>。上层 <code>HybridRetriever</code> 完全不感知背后是哪种嵌入器，只依赖"归一化向量"这一契约——这也是生产系统的常见分层方式。</p>
+  </div>
+</section>
+
+<!-- 03 余弦 -->
+<section class="mod" id="cos">
+  <div class="mod-head"><span class="num">03</span><h3>打分公式：余弦相似度</h3></div>
+  <p class="tagline">向量检索唯一用到的"数学"。分子是点积（逐维相乘再求和），分母是两个模长的乘积——把长度除掉，只剩方向夹角。</p>
+  <div class="card">
+    <div class="formula" style="font-size:20px">
+      cos(q, d) =
+      <span class="frac"><span class="top f-amber">Σ<sub style="font-size:12px">i</sub> q<sub style="font-size:12px">i</sub> · d<sub style="font-size:12px">i</sub></span><span class="bot f-cyan">‖q‖ · ‖d‖</span></span>
+      = <span class="frac"><span class="top">q · d</span><span class="bot">‖q‖‖d‖</span></span>
+      <span class="cap">值域 [-1, 1]；文本嵌入通常落在 [0, 1]；越大越相似</span>
+    </div>
+    <div class="grid">
+      <div>
+        <h4>归一化的魔法</h4>
+        <div class="steps">
+          先把每个向量除以自己的模长（‖v‖→1）：<br>
+          q̂ = q / ‖q‖,  d̂ = d / ‖d‖<br><br>
+          则　cos(q, d) = q̂ · d̂ <span class="ok">（纯点积！）</span><br><br>
+          ‖q‖=‖d‖=1 时分母恒为 1，<br>
+          <span class="hl">点积 = 余弦</span>
+        </div>
+      </div>
+      <div>
+        <h4>为什么这是工程关键</h4>
+        <p style="font-size:14.5px;color:var(--dim);line-height:1.9">点积是矩阵乘法，SIMD/GPU 极致优化过；除法（算模长）却很贵。所以整个链路<b style="color:var(--txt)">构造期归一化一次，查询期只做点积</b>：</p>
+        <ul style="font-size:13.5px;color:var(--dim);line-height:2;margin:8px 0 0 18px">
+          <li>本库 <code>embed()</code> 返回前就除以 norm</li>
+          <li>faiss 侧再兜底 <code>faiss.normalize_L2(matrix)</code></li>
+          <li>索引名直接叫 <code>IndexFlatIP</code>（IP = Inner Product 内积）</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 04 逐行 -->
+<section class="mod" id="code">
+  <div class="mod-head"><span class="num">04</span><h3>vector_index.py 逐行拆解</h3></div>
+  <p class="tagline">FlatIndex 是最透明的实现：查询期对每篇文档算一次余弦，排序取前 k。高亮行是打分核心。</p>
+  <div class="card">
+    <div class="grid">
+      <div>
+        <div class="code"><span class="ln"><span class="k">class</span> <span class="fn">FlatIndex</span>:</span>
+<span class="ln">    <span class="k">def</span> <span class="fn">__init__</span>(self, vectors):</span>
+<span class="ln">        self.vectors = vectors      <span class="c"># 构造期：整矩阵原样存</span></span>
+<span class="ln"></span>
+<span class="ln">    <span class="k">def</span> <span class="fn">search</span>(self, query, k):</span>
+<span class="hl-ln">        scored = [(i, cosine(query, v))</span>
+<span class="hl-ln">                  <span class="k">for</span> i, v <span class="k">in</span> enumerate(self.vectors)]</span>
+<span class="hl-ln">        scored.sort(key=<span class="k">lambda</span> x: x[<span class="num2">1</span>], reverse=<span class="num2">True</span>)</span>
+<span class="ln">        <span class="k">return</span> scored[:k]</span></div>
+        <div class="code" style="margin-top:12px"><span class="ln"><span class="c"># FaissIndex 对照（懒加载 faiss）</span></span>
+<span class="ln">matrix = np.asarray(vectors, dtype=<span class="s">"float32"</span>)</span>
+<span class="hl-ln">faiss.normalize_L2(matrix)          <span class="c"># 归一化兜底</span></span>
+<span class="ln">self._index = faiss.IndexFlatIP(dim)  <span class="c"># 内积索引</span></span>
+<span class="ln">self._index.add(matrix)              <span class="c"># 构造期入索引</span></span>
+<span class="ln">distances, indices = self._index.search(q, k)</span></div>
+      </div>
+      <div>
+        <h4>两版实现，一个契约</h4>
+        <div class="ledger" style="display:flex;flex-direction:column;gap:10px">
+          <div style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px 14px">
+            <b style="font-size:14px">FlatIndex（默认）</b>
+            <div style="font-size:13px;color:var(--dim);margin-top:4px;line-height:1.8">纯 Python 列表推导：N 篇文档 N 次 cosine，每次 O(d)。结果<b>精确无近似</b>，适合几千篇以内的教学/小规模场景。</div>
+          </div>
+          <div style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px 14px">
+            <b style="font-size:14px">FaissIndex（加速）</b>
+            <div style="font-size:13px;color:var(--dim);margin-top:4px;line-height:1.8">float32 矩阵 + C++ 批量点积。注意它<b>二次归一化</b>（第 05 节）：向量已在 embed 层归一化过，这里再 normalize_L2 一次是防御式编程，幂等无害。</div>
+          </div>
+        </div>
+        <p class="mini"><code>make_index(vectors, backend="auto")</code>：auto 先试 faiss，ImportError 就退回 flat——和 make_embedder 同款降级哲学，整库无强依赖。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 05 跑一遍 -->
+<section class="mod" id="run">
+  <div class="mod-head"><span class="num">05</span><h3>完整跑一遍：查询「向量 检索」</h3></div>
+  <p class="tagline">为可手算，用 3 维<b>教学示意向量</b>（真实模型是 384/512 维，机制相同）。分母 ‖q‖=0.99 是公共的，不影响排序。</p>
+  <div class="card">
+    <table>
+      <tr><th>对象</th><th>示意向量</th><th>dot(q,·) 逐维乘加</th><th>‖·‖</th><th>cos 相似度</th><th>名次</th></tr>
+      <tr class="win"><td>q「向量 检索」</td><td class="num3">[0.9, 0.4, 0.1]</td><td>—</td><td>0.99</td><td>—</td><td>—</td></tr>
+      <tr class="win"><td>D0 向量检索混合</td><td>[0.8, 0.5, 0.1]</td><td>0.72+0.20+0.01 = <b>0.93</b></td><td>0.95</td><td class="sum">0.99 🥇</td><td>1</td></tr>
+      <tr><td>D2 混合检索</td><td>[0.6, 0.6, 0.2]</td><td>0.54+0.24+0.02 = <b>0.80</b></td><td>0.87</td><td class="sum">0.93</td><td>2</td></tr>
+      <tr><td>D1 检索学习</td><td>[0.7, 0.2, 0.6]</td><td>0.63+0.08+0.06 = <b>0.77</b></td><td>0.94</td><td class="sum">0.83</td><td>3</td></tr>
+    </table>
+    <h4 style="margin-top:20px">相似度条 · D0 一骑绝尘</h4>
+    <div class="scorechart">
+      <div class="srow"><span class="lab">D0</span><div class="track"><div class="sbar" data-w="99"><span style="padding-left:8px;font-size:11px;color:#0b0f17;font-weight:700">0.99</span></div></div><span class="v">cos 0.99</span></div>
+      <div class="srow"><span class="lab">D2</span><div class="track"><div class="sbar c2" data-w="93"><span style="padding-left:8px;font-size:11px;color:#0b0f17;font-weight:700">0.93</span></div></div><span class="v">cos 0.93</span></div>
+      <div class="srow"><span class="lab">D1</span><div class="track"><div class="sbar" data-w="83"><span style="padding-left:8px;font-size:11px;color:#0b0f17;font-weight:700">0.83</span></div></div><span class="v">cos 0.83</span></div>
+    </div>
+    <p class="mini">留意与 BM25 的名次差异：BM25 侧是 D0 &gt; D1 ≈ D2（词面命中），向量侧是 D0 &gt; D2 &gt; D1（D2"混合检索"语义上更像检索主题，反超 D1）。<b>两侧排序不一致，正是 RRF 融合有价值的原因</b>。</p>
+  </div>
+</section>
+
+<!-- 06 对决 BM25 -->
+<section class="mod" id="vsbm">
+  <div class="mod-head"><span class="num">06</span><h3>对决 BM25：各赢一局，所以混合</h3></div>
+  <p class="tagline">两个典型查询，直观展示两种检索的互补性——以及 RRF 如何把双方证据合起来。</p>
+  <div class="card">
+    <div class="vs">
+      <div class="vcase winner-v">
+        <div class="q">🟣 向量赢：查询「笔记本电脑开不了机」</div>
+        <div class="r">文档写的是「<b>手提电脑无法启动</b>的排查步骤」<br>
+        BM25：字面零重合 → idf 贡献 0 → <b class="lose">召回失败</b><br>
+        向量：「笔记本电脑」≈「手提电脑」方向几乎重合 → <b class="win">cos≈0.85 高分召回</b></div>
+      </div>
+      <div class="vcase winner-b">
+        <div class="q">🟡 BM25 赢：查询「报错 ERR_CONN_1042」</div>
+        <div class="r">文档含精确错误码「ERR_CONN_1042 排障指南」<br>
+        向量：错误码被压进 384 维后近似"一串乱码"，区分度低 → <b class="lose">可能排不进前 k</b><br>
+        BM25：稀有词 idf 极高、字面精确命中 → <b class="win">稳居第一</b></div>
+      </div>
+    </div>
+    <h4 style="margin-top:20px">RRF 把两份名次合账（rrf_k=60，沿用第 05 节结果）</h4>
+    <table>
+      <tr><th>文档</th><th>BM25 名次分</th><th>向量名次分</th><th>RRF 总分</th><th>融合后名次</th></tr>
+      <tr class="win"><td>D0</td><td>1/(60+1) = 0.0164</td><td>1/(60+1) = 0.0164</td><td class="sum">0.0328</td><td>1</td></tr>
+      <tr><td>D2</td><td>1/(60+3) = 0.0159</td><td>1/(60+2) = 0.0161</td><td class="sum">0.0320</td><td>2（并列）</td></tr>
+      <tr><td>D1</td><td>1/(60+2) = 0.0161</td><td>1/(60+3) = 0.0159</td><td class="sum">0.0320</td><td>2（并列）</td></tr>
+    </table>
+    <p class="mini">D0 双料第一稳坐头名；D1/D2 各有一侧第 2，RRF 后<b>精确并列</b>——这正是"只认名次、不认分值"的 RRF 的特点，平局交给重排器按查询细排。BM25 分数 0.99 和余弦 0.99 完全不可比，但 1/61 和 1/61 可以直接相加。</p>
+  </div>
+</section>
+
+<!-- 07 规模化 -->
+<section class="mod" id="scale">
+  <div class="mod-head"><span class="num">07</span><h3>规模化：暴力检索之后的世界</h3></div>
+  <p class="tagline">本库 FlatIndex 是 O(N·d) 暴力扫全库，精确但线性。千万级语料必须换 ANN（近似最近邻），用一点召回率换数量级的速度。</p>
+  <div class="card">
+    <div class="grid">
+      <div>
+        <table>
+          <tr><th>方案</th><th>复杂度</th><th>精确?</th><th>适用</th></tr>
+          <tr><td>Flat（本库默认）</td><td class="num3">O(N·d)</td><td>精确</td><td>教学 / ≤1万篇</td></tr>
+          <tr><td>IndexFlatIP + faiss</td><td class="num3">O(N·d) 但常数极小</td><td>精确</td><td>十万级</td></tr>
+          <tr><td>IVF 倒排文件</td><td class="num3">O(√N·d) 级</td><td>近似</td><td>百万级</td></tr>
+          <tr><td>HNSW 图索引</td><td class="num3">O(logN·d) 级</td><td>近似</td><td>千万级·高召回</td></tr>
+        </table>
+      </div>
+      <div>
+        <h4>工程要点</h4>
+        <ul style="font-size:13.5px;color:var(--dim);line-height:2;margin-left:18px">
+          <li>ANN 索引（HNSW/IVF）都要求<b style="color:var(--txt)">先归一化再建库</b>，否则内积≠余弦，语义就错了</li>
+          <li>嵌入模型<b style="color:var(--txt)">不可中途更换</b>：查询向量必须和库内向量同源同维</li>
+          <li>删除/更新文档 = 重建或标记 tombstone，比 BM25 倒排的增量更新麻烦</li>
+          <li>维度越高点积越慢：384 维是速度/效果折中的甜点区</li>
+        </ul>
+        <p class="mini">记忆锚点：BM25 的账本<b>加一篇文档只多一行账</b>；向量索引是<b>几何结构</b>，动了空间里的点就可能要重建——这是两种检索在工程维护性上的根本差异。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="footnote wrap">
+  vector·语义检索 · 与 bm25-construct.html / bm25-query.html 配套阅读 · 实现对应 embedder.py + vector_index.py · 示意向量为教学构造，非真实模型输出
+</div>
+
+</div>
+
+<script>
+const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){
+  e.target.querySelectorAll('.sbar[data-w]').forEach(b=>{b.style.width=b.dataset.w+'%'});
+  io.unobserve(e.target);
+}})},{threshold:.3});
+document.querySelectorAll('.scorechart').forEach(el=>io.observe(el));
+document.querySelectorAll('nav a').forEach(a=>{a.addEventListener('click',()=>{
+  document.querySelectorAll('nav a').forEach(x=>x.classList.remove('on'));a.classList.add('on');
+})});
+</script>
+</body>
+</html>

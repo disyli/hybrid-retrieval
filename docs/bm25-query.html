@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BM25 查询期查账图解</title>
+<style>
+:root{
+  --bg:#0b0f17; --card:#121826; --card2:#0e1420; --line:#1f2a3a;
+  --txt:#e6eaf2; --dim:#8b95a7; --faint:#5b6678;
+  --amber:#fbbf24; --violet:#a78bfa; --cyan:#22d3ee; --green:#34d399; --rose:#fb7185;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:76px}
+body{background:var(--bg);color:var(--txt);font:16px/1.75 -apple-system,"SF Pro Text","PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+::selection{background:rgba(34,211,238,.28)}
+.wrap{max-width:1060px;margin:0 auto;padding:0 24px}
+nav{position:sticky;top:0;z-index:50;background:rgba(11,15,23,.82);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;gap:6px;height:56px;overflow-x:auto;scrollbar-width:none}
+nav .wrap::-webkit-scrollbar{display:none}
+nav .logo{font-weight:700;letter-spacing:.5px;margin-right:10px;white-space:nowrap}
+nav .logo b{color:var(--green)}
+nav a{color:var(--dim);text-decoration:none;font-size:12.5px;font-family:var(--mono);padding:5px 10px;border-radius:99px;border:1px solid transparent;white-space:nowrap;transition:.2s}
+nav a:hover,nav a.on{color:var(--txt);border-color:var(--line);background:var(--card)}
+header{padding:72px 0 40px;position:relative;overflow:hidden}
+header::before{content:"";position:absolute;inset:-40% -20% auto;height:520px;background:
+  radial-gradient(600px 260px at 18% 30%,rgba(52,211,153,.10),transparent 60%),
+  radial-gradient(600px 260px at 82% 20%,rgba(34,211,238,.12),transparent 60%),
+  radial-gradient(700px 300px at 50% 90%,rgba(251,191,36,.10),transparent 60%);pointer-events:none}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:3px;color:var(--green);text-transform:uppercase}
+h1{font-size:clamp(30px,4.6vw,46px);font-weight:800;letter-spacing:-.5px;margin:10px 0 14px}
+h1 .grad{background:linear-gradient(92deg,var(--green),var(--cyan) 45%,var(--amber) 80%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--dim);max-width:800px;font-size:16.5px}
+section.mod{margin:56px 0}
+.mod-head{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:6px}
+.num{font-family:var(--mono);font-size:13px;color:var(--faint);letter-spacing:2px}
+h3{font-size:24px;font-weight:800;letter-spacing:-.3px}
+h3 code{font-family:var(--mono);font-size:19px;font-weight:600;color:var(--cyan)}
+.tagline{color:var(--dim);margin-bottom:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+@media(max-width:920px){.grid{grid-template-columns:1fr}}
+h4{font-size:13px;letter-spacing:1.5px;font-family:var(--mono);color:var(--dim);margin:0 0 12px;text-transform:uppercase}
+p code,li code,td code{font-family:var(--mono);font-size:12.5px;background:var(--card2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--cyan)}
+.mini{margin-top:14px;font-size:13px;color:var(--dim);border-left:2px solid var(--green);padding:4px 0 4px 14px}
+.mini b{color:var(--txt)}
+/* 公式排版 */
+.formula{background:var(--card2);border:1px dashed var(--line);border-radius:12px;padding:18px;margin:14px 0;text-align:center;font-family:Georgia,'Times New Roman',serif;font-size:18px;font-style:italic;position:relative}
+.formula .cap{display:block;font-family:var(--mono);font-style:normal;font-size:11px;color:var(--faint);margin-top:10px;letter-spacing:1px}
+.frac{display:inline-block;vertical-align:middle;text-align:center;margin:0 3px}
+.frac .top{display:block;padding:0 8px 2px;border-bottom:1.5px solid var(--txt)}
+.frac .bot{display:block;padding:2px 8px 0}
+.f-cyan{color:var(--cyan)} .f-rose{color:var(--rose)} .f-green{color:var(--green)} .f-violet{color:var(--violet)} .f-amber{color:var(--amber)}
+/* 代码块 */
+.code{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:18px;font-family:var(--mono);font-size:13px;line-height:1.9;overflow-x:auto}
+.code .ln{display:block;color:var(--dim);white-space:pre}
+.code .k{color:var(--violet)} .code .s{color:var(--amber)} .code .c{color:var(--faint);font-style:italic}
+.code .fn{color:var(--cyan)} .code .num2{color:var(--rose)}
+.code .hl-ln{background:rgba(52,211,153,.08);border-left:2px solid var(--green);display:block;padding-left:8px;margin-left:-10px;white-space:pre;border-radius:0 6px 6px 0}
+/* 账本卡片 */
+.books{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:760px){.books{grid-template-columns:1fr}}
+.book{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:14px;position:relative;overflow:hidden}
+.book::before{content:"";position:absolute;top:0;left:0;right:0;height:3px}
+.book.b1::before{background:var(--amber)} .book.b2::before{background:var(--cyan)} .book.b3::before{background:var(--green)}
+.book .icon{font-size:20px}
+.book .name{font-family:var(--mono);font-size:13px;font-weight:700;margin-top:6px}
+.book .desc{font-size:12.5px;color:var(--dim);margin-top:4px;line-height:1.6}
+.book .sample{font-family:var(--mono);font-size:11.5px;color:var(--faint);margin-top:8px;background:rgba(0,0,0,.25);border-radius:6px;padding:6px 8px;white-space:pre-wrap}
+/* 查账流程 */
+.ledger{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.lrow{display:grid;grid-template-columns:150px 1fr;gap:12px;align-items:stretch}
+@media(max-width:700px){.lrow{grid-template-columns:1fr}}
+.lstep{font-family:var(--mono);font-size:12px;color:var(--txt);background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;justify-content:center}
+.lstep b{color:var(--green);font-size:11px;letter-spacing:1px}
+.lstep .cd{color:var(--cyan);font-size:12px;margin-top:2px}
+.lexp{font-size:13.5px;color:var(--dim);background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;display:flex;align-items:center}
+.lexp b{color:var(--txt)}
+/* 查账表格 */
+table{width:100%;border-collapse:collapse;margin-top:6px;font-size:13.5px}
+th{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--faint);text-align:center;padding:8px 10px;border-bottom:1px solid var(--line);text-transform:uppercase}
+th:first-child,td:first-child{text-align:left}
+td{padding:9px 10px;border-bottom:1px solid rgba(31,42,58,.6);color:var(--dim);text-align:center;font-family:var(--mono)}
+td:first-child{color:var(--txt);font-weight:700}
+tr:last-child td{border-bottom:none}
+td.hit{color:var(--amber);font-weight:700}
+td.miss{color:var(--faint)}
+td.skip{color:var(--rose)}
+td.num3{color:var(--cyan);font-weight:700}
+td.sum{color:var(--green);font-weight:800;font-size:15px}
+tr.win td{background:rgba(52,211,153,.06)}
+/* 分数条 */
+.scorechart{margin-top:10px}
+.srow{display:grid;grid-template-columns:44px 1fr 90px;gap:10px;align-items:center;margin:10px 0;font-family:var(--mono);font-size:12.5px;color:var(--dim)}
+.srow .lab{color:var(--txt);font-weight:700}
+.track{position:relative;height:26px;background:var(--card2);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.sbar{position:absolute;left:0;top:0;bottom:0;border-radius:7px;width:0;transition:width 1s cubic-bezier(.2,.7,.2,1);display:flex;align-items:center}
+.sbar .seg1{height:100%;background:linear-gradient(90deg,rgba(251,191,36,.3),rgba(251,191,36,.85))}
+.sbar .seg2{height:100%;background:linear-gradient(90deg,rgba(34,211,238,.3),rgba(34,211,238,.75))}
+.sbar .seg0{height:100%;background:repeating-linear-gradient(45deg,rgba(139,149,167,.12),rgba(139,149,167,.12) 6px,transparent 6px,transparent 12px)}
+.srow .v{color:var(--green);font-weight:700}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin:10px 0 0;font-size:12.5px;color:var(--dim);font-family:var(--mono)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+/* 阶段流 */
+.stageflow{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;margin-top:6px}
+.stagenode{flex:1 1 180px;border:1px solid var(--line);background:var(--card2);border-radius:12px;padding:14px;border-top:2px solid var(--green)}
+.stagenode.c{border-top-color:var(--amber)}
+.stagenode .t{font-weight:700;font-size:14px}
+.stagenode .d{font-size:12.5px;color:var(--dim);font-family:var(--mono);margin-top:4px;line-height:1.7}
+/* 查询卡 */
+.querybox{display:flex;align-items:center;gap:12px;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-bottom:16px;flex-wrap:wrap}
+.querybox .q{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--amber)}
+.querybox .arr{color:var(--faint)}
+.querybox .tok{font-family:var(--mono);font-size:13px;color:var(--cyan);background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.3);border-radius:8px;padding:2px 10px}
+/* 步骤计算 */
+.steps{font-family:var(--mono);font-size:13px;color:var(--dim);line-height:2.1}
+.steps b{color:var(--txt)}
+.steps .hl{color:var(--amber)}
+.steps .ok{color:var(--green)}
+.steps .no{color:var(--rose)}
+.footnote{margin-top:56px;padding:26px 0 60px;border-top:1px solid var(--line);color:var(--faint);font-size:13px;font-family:var(--mono)}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <span class="logo">bm25<b>·</b>查询期</span>
+  <a href="#pos">链路定位</a><a href="#books">三本账</a><a href="#code">逐行拆解</a><a href="#formula">公式对照</a><a href="#run">跑一遍</a><a href="#norm">长度归一</a><a href="#outer">外层循环</a>
+</div></nav>
+
+<header><div class="wrap">
+  <div class="kicker">Okapi BM25 · Query-Time Scoring</div>
+  <h1>查询期查账 <span class="grad">图解</span></h1>
+  <p class="sub">构造期已把<b style="color:var(--amber)">三本账</b>备好（长度账、词频账、身份证册）。查询期拿到问题后，唯一的动作就是<b style="color:var(--green)">逐篇翻账本、按公式记账、比谁总分高</b>——没有一次全库扫描，全部是 O(1) 查表。本页延续构造期的 3 篇迷你语料，把 <code>score()</code> 的每一行"画"出来。</p>
+</div></header>
+
+<div class="wrap">
+
+<!-- 00 链路定位 -->
+<section class="mod" id="pos">
+  <div class="mod-head"><span class="num">00</span><h3>score() 在链路中的位置</h3></div>
+  <p class="tagline">一次混合检索 = BM25 打分 + 向量检索 + RRF 融合。本页只聚焦第一步里的内层函数。</p>
+  <div class="card">
+    <div class="stageflow">
+      <div class="stagenode c">
+        <div class="t">📍 构造期 <code>__init__</code></div>
+        <div class="d">语料 → 三本账<br>doc_len · doc_freqs · idf<br>（见上一页图解）</div>
+      </div>
+      <div class="stagenode">
+        <div class="t">⚡ 查询期 <code>_bm25_scores</code></div>
+        <div class="d">查询 → tokenize<br>对 N 篇文档循环调 score()<br>得到分数数组</div>
+      </div>
+      <div class="stagenode">
+        <div class="t">🏆 排序取候选</div>
+        <div class="d">sorted(...)[:k]<br>取前 candidate_k=20 篇<br>作为 BM25 一侧候选</div>
+      </div>
+      <div class="stagenode">
+        <div class="t">🔀 RRF 融合</div>
+        <div class="d">与向量检索结果<br>按名次倒数融合<br>再进重排器</div>
+      </div>
+    </div>
+    <p class="mini">外层只有三行：<code>[self.bm25.score(qtok, i) for i in range(len(self.documents))]</code>。所以"BM25 打分"的成本模型非常清晰：<b>N 篇文档 × 每篇 O(查询词数) 次查表</b>。</p>
+  </div>
+</section>
+
+<!-- 01 三本账 -->
+<section class="mod" id="books">
+  <div class="mod-head"><span class="num">01</span><h3>查账前先看清：三本账长什么样</h3></div>
+  <p class="tagline">score() 全部的输入来源。左边两本是"每篇一份"的正排账本，右边一本是全语料共享的"词身份证册"。</p>
+  <div class="card">
+    <div class="books">
+      <div class="book b1">
+        <div class="icon">📏</div>
+        <div class="name">① 长度账 doc_len</div>
+        <div class="desc">一个 list，每篇文档记一个数：词元总数（含重复）。查询期用来算"这篇相对平均是长是短"。</div>
+        <div class="sample">[3, 2, 2]      # D0,D1,D2
+avgdl = 7/3 ≈ 2.33（基准尺）</div>
+      </div>
+      <div class="book b2">
+        <div class="icon">📒</div>
+        <div class="name">② 词频账 doc_freqs</div>
+        <div class="desc">每篇文档一个 Counter（字典）：词元 → 出现次数。查一个词就是翻到那一页看计数。</div>
+        <div class="sample">D0: {向量:1, 检索:1, 混合:1}
+D1: {检索:1, 学习:1}
+D2: {混合:1, 检索:1}</div>
+      </div>
+      <div class="book b3">
+        <div class="icon">🪪</div>
+        <div class="name">③ 身份证册 idf</div>
+        <div class="desc">全语料一本字典：词元 → 稀有度分。越少见的词分越高，构造期算好，查询期只查不改。</div>
+        <div class="sample">向量: 0.981   学习: 0.981
+混合: 0.470   检索: 0.134
+# 人手一份的"检索"最不值钱</div>
+      </div>
+    </div>
+    <p class="mini">记忆锚点：<b>身份证册</b>回答"这个词多值钱"，<b>词频账</b>回答"这个词在这篇出现了几次"，<b>长度账</b>回答"这篇该打折还是加成"。</p>
+  </div>
+</section>
+
+<!-- 02 逐行拆解 -->
+<section class="mod" id="code">
+  <div class="mod-head"><span class="num">02</span><h3>score() 逐行拆解：每一行都是查表</h3></div>
+  <p class="tagline">真实源码 <code>bm25.py</code> 原样贴出，高亮行 = 查账动作。全函数没有循环扫语料，只有字典/列表取值。</p>
+  <div class="card">
+    <div class="grid">
+      <div>
+        <div class="code"><span class="ln"><span class="k">def</span> <span class="fn">score</span>(self, query_tokens, doc_idx):</span>
+<span class="ln">    qfreq = Counter(query_tokens)   <span class="c"># 查询去重记数</span></span>
+<span class="hl-ln">    dl = self.doc_len[doc_idx]      <span class="c"># ① 查长度账</span></span>
+<span class="hl-ln">    df = self.doc_freqs[doc_idx]    <span class="c"># ② 取这篇词频账</span></span>
+<span class="ln">    score = 0.0</span>
+<span class="ln">    <span class="k">for</span> term, qtf <span class="k">in</span> qfreq.items():</span>
+<span class="hl-ln">        <span class="k">if</span> term <span class="k">not in</span> df:       <span class="c"># ③ 翻不到 → 跳过</span></span>
+<span class="hl-ln">            <span class="k">continue</span></span>
+<span class="hl-ln">        tf = df[term]                <span class="c"># ④ 翻到 → 次数</span></span>
+<span class="ln">        denom = tf + self.k1*(<span class="num2">1</span>-self.b + self.b*dl/self.avgdl)</span>
+<span class="hl-ln">        score += self.idf[term] * tf*(self.k1+<span class="num2">1</span>)/denom * qtf</span>
+<span class="ln">    <span class="k">return</span> score</span></div>
+        <p class="mini">注意 ③：<code>continue</code> 不是扣分，是<b>贡献 0 分直接跳过</b>。所以一篇不含任何查询词的文档，循环走完总分仍是 0.0。</p>
+      </div>
+      <div>
+        <h4>四个查账动作 · 逐条对照</h4>
+        <div class="ledger">
+          <div class="lrow"><div class="lstep"><b>① 查长度账</b><span class="cd">doc_len[doc_idx]</span></div><div class="lexp">列表下标取值，O(1)。拿到 <b>dl</b>，准备和 avgdl 比长短。</div></div>
+          <div class="lrow"><div class="lstep"><b>② 取词频账</b><span class="cd">doc_freqs[doc_idx]</span></div><div class="lexp">拿到这篇文档专属的 <b>Counter</b> 对象，一个"词 → 次数"的字典。</div></div>
+          <div class="lrow"><div class="lstep"><b>③ 翻一页</b><span class="cd">term not in df</span></div><div class="lexp">字典成员判断，O(1)。翻不到这页 → <b>continue</b>，这个词 0 分。</div></div>
+          <div class="lrow"><div class="lstep"><b>④ 查身份证</b><span class="cd">idf[term] · df[term]</span></div><div class="lexp">两次字典取值：稀有度分 × 出现次数，代入公式累加。</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 03 公式对照 -->
+<section class="mod" id="formula">
+  <div class="mod-head"><span class="num">03</span><h3>公式对照：每个部件来自哪本账</h3></div>
+  <p class="tagline">查询期唯一用到的公式。颜色与三本账一一对应，k1=1.5 控制"重复收益递减"，b=0.75 控制长度惩罚强度。</p>
+  <div class="card">
+    <div class="formula" style="font-size:20px">
+      score(q, d) = Σ<sub style="font-size:12px">t ∈ q</sub>
+      <span class="f-green">idf(t)</span> ×
+      <span class="frac"><span class="top f-amber">tf · (k₁ + 1)</span><span class="bot">tf + k₁ · (1 − b + b · <span class="f-cyan">dl / avgdl</span>)</span></span>
+      × qtf
+      <span class="cap">查询期打分公式 · 对查询里的每个去重词元 t 累加</span>
+    </div>
+    <table>
+      <tr><th>部件</th><th>来源</th><th>本例取值</th><th>作用</th></tr>
+      <tr><td>idf(t)</td><td style="color:var(--green)">🪪 身份证册</td><td>向量 0.981 / 检索 0.134</td><td>越稀有越值钱，决定权重基调</td></tr>
+      <tr><td>tf</td><td style="color:var(--amber)">📒 词频账</td><td>命中词均为 1</td><td>出现越多分越高，但饱和递减</td></tr>
+      <tr><td>dl / avgdl</td><td style="color:var(--cyan)">📏 长度账</td><td>D0 1.29 · D1/D2 0.86</td><td>比平均长 → 打折；比平均短 → 加成</td></tr>
+      <tr><td>qtf</td><td style="color:var(--violet)">查询自身</td><td>本例均为 1</td><td>查询里重复出现的词额外加权</td></tr>
+      <tr><td>k₁=1.5, b=0.75</td><td style="color:var(--faint)">构造期固定</td><td>—</td><td>经验值：饱和速度 / 长度惩罚强度</td></tr>
+    </table>
+    <p class="mini">分子分母同时出现 tf，所以 tf→∞ 时该词贡献趋近 <b>idf(t)·(k₁+1)/k₁ 上限</b>——这就是"重复收益递减"：第 1 次出现最值钱，之后越来越不值。</p>
+  </div>
+</section>
+
+<!-- 04 跑一遍 -->
+<section class="mod" id="run">
+  <div class="mod-head"><span class="num">04</span><h3>完整跑一遍：查询「向量 检索」</h3></div>
+  <p class="tagline">同一个查询，对 D0/D1/D2 各调一次 score()。表格里能直观看到"翻不到账页 → 跳过"和"稀有词定胜负"。</p>
+  <div class="card">
+    <div class="querybox">
+      <span class="q">查询："向量 检索"</span>
+      <span class="arr">→ tokenize →</span>
+      <span class="tok">向量</span><span class="tok">检索</span>
+      <span style="font-size:12.5px;color:var(--faint);font-family:var(--mono)">qfreq = {向量:1, 检索:1}，k₁=1.5，b=0.75</span>
+    </div>
+    <table>
+      <tr><th>文档</th><th>词元</th><th>翻词频账</th><th>tf</th><th>idf</th><th>dl/avgdl</th><th>贡献</th><th>总分</th></tr>
+      <tr class="win"><td rowspan="2">D0<br>(长3)</td><td>向量</td><td class="hit">✓ 翻到</td><td>1</td><td class="num3">0.981</td><td>1.29</td><td class="hit">0.981×2.5/2.82 ≈ <b>0.87</b></td><td rowspan="2" class="sum">0.99 🥇</td></tr>
+      <tr class="win"><td>检索</td><td class="hit">✓ 翻到</td><td>1</td><td class="num3">0.134</td><td>1.29</td><td>≈ 0.12</td></tr>
+      <tr><td rowspan="2">D1<br>(长2)</td><td>向量</td><td class="skip">✗ 查无此词</td><td colspan="4" class="skip">continue → 贡献 0</td><td rowspan="2" class="sum">0.14</td></tr>
+      <tr><td>检索</td><td class="hit">✓ 翻到</td><td>1</td><td class="num3">0.134</td><td>0.86</td><td>≈ 0.14</td></tr>
+      <tr><td rowspan="2">D2<br>(长2)</td><td>向量</td><td class="skip">✗ 查无此词</td><td colspan="4" class="skip">continue → 贡献 0</td><td rowspan="2" class="sum">0.14</td></tr>
+      <tr><td>检索</td><td class="hit">✓ 翻到</td><td>1</td><td class="num3">0.134</td><td>0.86</td><td>≈ 0.14</td></tr>
+    </table>
+    <h4 style="margin-top:20px">分数构成 · 谁贡献了什么</h4>
+    <div class="scorechart">
+      <div class="srow"><span class="lab">D0</span><div class="track"><div class="sbar" data-w="100"><span class="seg1" style="width:88%"></span><span class="seg2" style="width:12%"></span></div></div><span class="v">0.99</span></div>
+      <div class="srow"><span class="lab">D1</span><div class="track"><div class="sbar" data-w="14"><span class="seg2" style="width:100%"></span></div></div><span class="v">0.14</span></div>
+      <div class="srow"><span class="lab">D2</span><div class="track"><div class="sbar" data-w="14"><span class="seg2" style="width:100%"></span></div></div><span class="v">0.14</span></div>
+    </div>
+    <div class="legend">
+      <span><i style="background:rgba(251,191,36,.8)"></i>向量（idf 0.981，仅 D0 有）</span>
+      <span><i style="background:rgba(34,211,238,.7)"></i>检索（idf 0.134，三篇都有）</span>
+    </div>
+    <p class="mini">D0 的 0.99 分里 <b>88% 来自"向量"这一个词</b>——它是 D0 独有的稀有词。而"检索"三篇都有、毫无区分度，几乎不改变排名。这就是 IDF 的直觉：<b>决定排名的是稀有词，常见词只提供基础分</b>。</p>
+  </div>
+</section>
+
+<!-- 05 长度归一 -->
+<section class="mod" id="norm">
+  <div class="mod-head"><span class="num">05</span><h3>细节放大：同一个词，D0 和 D1 得分为何不同</h3></div>
+  <p class="tagline">"检索"在两篇文档里 tf 都是 1，但贡献一个是 0.12、一个是 0.14——差别全在长度账。</p>
+  <div class="card">
+    <div class="grid">
+      <div>
+        <div class="steps">
+          <b>D0（dl=3 &gt; avgdl=2.33，比平均长 29%）</b><br>
+          denom = 1 + 1.5×(1−0.75 + 0.75×<span class="hl">3/2.33</span>)<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= 1 + 1.5×1.214 = <b>2.82</b><br>
+          贡献 = 0.134 × 2.5 / 2.82 = <span class="no">0.12</span>（打折）<br><br>
+          <b>D1（dl=2 &lt; avgdl=2.33，比平均短 14%）</b><br>
+          denom = 1 + 1.5×(1−0.75 + 0.75×<span class="hl">2/2.33</span>)<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= 1 + 1.5×0.893 = <b>2.34</b><br>
+          贡献 = 0.134 × 2.5 / 2.34 = <span class="ok">0.14</span>（加成）
+        </div>
+      </div>
+      <div>
+        <h4>为什么这么设计</h4>
+        <p style="font-size:14.5px;color:var(--dim);line-height:1.9">假设没有长度项（b=0），公式退化成 idf × (k₁+1)/(k₁+1) × 常数——一个词在 500 词长文里的 1 次出现，和在一句话里的 1 次出现拿同样的分。但直觉上：<b>短文档里命中，更说明整篇都在讲这件事</b>。</p>
+        <p style="font-size:14.5px;color:var(--dim);line-height:1.9;margin-top:10px">b=0.75 表示"四分之三的程度"按长度修正：dl=avgdl 时分母恰好是 1+k₁×1，不长不短不奖不罚；dl 越大惩罚越重，dl 越小加成越多（但受 tf 饱和限制，不会无限放大）。</p>
+        <p class="mini">极端校准：b=0 完全忽略长度；b=1 完全按长度线性缩放。0.75 是多年经验默认值。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 06 外层循环 -->
+<section class="mod" id="outer">
+  <div class="mod-head"><span class="num">06</span><h3>退一层看外层：分数数组怎么变成候选</h3></div>
+  <p class="tagline">score() 只回答"一篇文档多少分"。把 N 篇都问一遍、排序、截断，才是 BM25 一侧的完整产出。</p>
+  <div class="card">
+    <div class="grid">
+      <div>
+        <div class="code"><span class="ln"><span class="c"># retriever.py · _bm25_scores</span></span>
+<span class="ln"><span class="k">def</span> <span class="fn">_bm25_scores</span>(self, query_text):</span>
+<span class="ln">    qtok = tokenize(query_text)</span>
+<span class="ln">    <span class="k">return</span> [self.bm25.score(qtok, i)</span>
+<span class="ln">            <span class="k">for</span> i <span class="k">in</span> range(len(self.documents))]</span>
+<span class="ln"></span>
+<span class="ln"><span class="c"># retrieve() 中使用</span></span>
+<span class="ln">bm25 = self._bm25_scores(query)</span>
+<span class="ln">bm25_order = sorted(range(n),</span>
+<span class="ln">    key=<span class="k">lambda</span> i: bm25[i], reverse=<span class="num2">True</span>)[:k]</span></div>
+      </div>
+      <div>
+        <div class="steps">
+          <b>本例的分数数组</b><br>
+          bm25 = [<span class="hl">0.99</span>, 0.14, 0.14]<br><br>
+          <b>排序取前 k=20（不足全取）</b><br>
+          bm25_order = [D0, D1, D2]<br><br>
+          <b>交给 RRF 融合</b><br>
+          D0 得 1/(60+1) = 0.0164<br>
+          D1 得 1/(60+2) = 0.0161<br>
+          再叠加向量检索一侧的名次分
+        </div>
+        <p class="mini">两个细节：查询文本也过同一个 <code>tokenize</code>，保证<b>两边账本口径一致</b>（同一套切词规则）；RRF 只看名次不看分值，所以 BM25 分数的绝对大小在融合时被丢弃，只留下先后顺序。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="footnote wrap">
+  bm25·查询期 · 与 bm25-construct.html（构造期）配套阅读 · 语料与数值均来自 hybrid_search/bm25.py 真实实现 · k₁=1.5, b=0.75
+</div>
+
+</div>
+
+<script>
+const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){
+  e.target.querySelectorAll('.sbar[data-w]').forEach(b=>{b.style.width=b.dataset.w+'%'});
+  io.unobserve(e.target);
+}})},{threshold:.3});
+document.querySelectorAll('.scorechart').forEach(el=>io.observe(el));
+document.querySelectorAll('nav a').forEach(a=>{a.addEventListener('click',()=>{
+  document.querySelectorAll('nav a').forEach(x=>x.classList.remove('on'));a.classList.add('on');
+})});
+</script>
+</body>
+</html>

@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BM25 构造期公式图解</title>
+<style>
+:root{
+  --bg:#0b0f17; --card:#121826; --card2:#0e1420; --line:#1f2a3a;
+  --txt:#e6eaf2; --dim:#8b95a7; --faint:#5b6678;
+  --amber:#fbbf24; --violet:#a78bfa; --cyan:#22d3ee; --green:#34d399; --rose:#fb7185;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:76px}
+body{background:var(--bg);color:var(--txt);font:16px/1.75 -apple-system,"SF Pro Text","PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+::selection{background:rgba(34,211,238,.28)}
+.wrap{max-width:1060px;margin:0 auto;padding:0 24px}
+nav{position:sticky;top:0;z-index:50;background:rgba(11,15,23,.82);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;gap:6px;height:56px;overflow-x:auto;scrollbar-width:none}
+nav .wrap::-webkit-scrollbar{display:none}
+nav .logo{font-weight:700;letter-spacing:.5px;margin-right:10px;white-space:nowrap}
+nav .logo b{color:var(--amber)}
+nav a{color:var(--dim);text-decoration:none;font-size:12.5px;font-family:var(--mono);padding:5px 10px;border-radius:99px;border:1px solid transparent;white-space:nowrap;transition:.2s}
+nav a:hover,nav a.on{color:var(--txt);border-color:var(--line);background:var(--card)}
+header{padding:72px 0 40px;position:relative;overflow:hidden}
+header::before{content:"";position:absolute;inset:-40% -20% auto;height:520px;background:
+  radial-gradient(600px 260px at 18% 30%,rgba(251,191,36,.10),transparent 60%),
+  radial-gradient(600px 260px at 82% 20%,rgba(167,139,250,.12),transparent 60%),
+  radial-gradient(700px 300px at 50% 90%,rgba(34,211,238,.10),transparent 60%);pointer-events:none}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:3px;color:var(--amber);text-transform:uppercase}
+h1{font-size:clamp(30px,4.6vw,46px);font-weight:800;letter-spacing:-.5px;margin:10px 0 14px}
+h1 .grad{background:linear-gradient(92deg,var(--amber),var(--violet) 45%,var(--cyan) 80%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--dim);max-width:780px;font-size:16.5px}
+section.mod{margin:56px 0}
+.mod-head{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:6px}
+.num{font-family:var(--mono);font-size:13px;color:var(--faint);letter-spacing:2px}
+h3{font-size:24px;font-weight:800;letter-spacing:-.3px}
+h3 code{font-family:var(--mono);font-size:19px;font-weight:600;color:var(--cyan)}
+.tagline{color:var(--dim);margin-bottom:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+@media(max-width:920px){.grid{grid-template-columns:1fr}}
+h4{font-size:13px;letter-spacing:1.5px;font-family:var(--mono);color:var(--dim);margin:0 0 12px;text-transform:uppercase}
+p code,li code,td code{font-family:var(--mono);font-size:12.5px;background:var(--card2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--cyan)}
+.mini{margin-top:14px;font-size:13px;color:var(--dim);border-left:2px solid var(--amber);padding:4px 0 4px 14px}
+.mini b{color:var(--txt)}
+/* 公式排版 */
+.formula{background:var(--card2);border:1px dashed var(--line);border-radius:12px;padding:18px;margin:14px 0;text-align:center;font-family:Georgia,'Times New Roman',serif;font-size:18px;font-style:italic;position:relative}
+.formula .cap{display:block;font-family:var(--mono);font-style:normal;font-size:11px;color:var(--faint);margin-top:10px;letter-spacing:1px}
+.frac{display:inline-block;vertical-align:middle;text-align:center;margin:0 3px}
+.frac .top{display:block;padding:0 8px 2px;border-bottom:1.5px solid var(--txt)}
+.frac .bot{display:block;padding:2px 8px 0}
+.f-cyan{color:var(--cyan)} .f-rose{color:var(--rose)} .f-green{color:var(--green)} .f-violet{color:var(--violet)} .f-amber{color:var(--amber)}
+/* 语料文档卡 */
+.docs{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:760px){.docs{grid-template-columns:1fr}}
+.doc{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:14px}
+.doc .id{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:1px}
+.doc .body{font-size:15px;margin:6px 0 10px;font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-family:var(--mono);font-size:12px;padding:2px 9px;border-radius:8px;border:1px solid;color:var(--amber);border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.06)}
+.doc .len{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:10px}
+.doc .len b{color:var(--txt)}
+/* 长度条形图 */
+.lenchart{margin-top:6px}
+.lenrow{display:grid;grid-template-columns:44px 1fr 120px;gap:10px;align-items:center;margin:10px 0;font-family:var(--mono);font-size:12.5px;color:var(--dim)}
+.lenrow .lab{color:var(--txt);font-weight:700}
+.track{position:relative;height:26px;background:var(--card2);border:1px solid var(--line);border-radius:8px}
+.bar{position:absolute;left:0;top:0;bottom:0;border-radius:7px;background:linear-gradient(90deg,rgba(34,211,238,.25),rgba(34,211,238,.75));width:0;transition:width 1s cubic-bezier(.2,.7,.2,1)}
+.bar.b0{background:linear-gradient(90deg,rgba(251,191,36,.25),rgba(251,191,36,.8))}
+.bar.b1{background:linear-gradient(90deg,rgba(167,139,250,.25),rgba(167,139,250,.8))}
+.bar.b2{background:linear-gradient(90deg,rgba(52,211,153,.25),rgba(52,211,153,.8))}
+.avgline{position:absolute;top:-22px;bottom:-6px;width:0;border-left:2px dashed var(--rose);left:0;transition:left 1s .4s}
+.avgline span{position:absolute;top:-4px;left:6px;font-size:10.5px;color:var(--rose);white-space:nowrap;font-style:normal}
+/* TF 计数 */
+.tfbox{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px}
+.tfitem{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;text-align:center}
+.tfitem .w{font-weight:700;font-size:14px}
+.tfitem .cnt{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:4px}
+.tfitem .cnt b{color:var(--amber);font-size:14px}
+.dots{display:flex;gap:3px;justify-content:center;margin-top:6px}
+.dots i{width:8px;height:8px;border-radius:50%;background:var(--amber);opacity:.9}
+.dots i.off{background:var(--line);opacity:1}
+/* DF 矩阵 */
+table{width:100%;border-collapse:collapse;margin-top:6px;font-size:13.5px}
+th{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--faint);text-align:center;padding:8px 10px;border-bottom:1px solid var(--line);text-transform:uppercase}
+th:first-child,td:first-child{text-align:left}
+td{padding:9px 10px;border-bottom:1px solid rgba(31,42,58,.6);color:var(--dim);text-align:center;font-family:var(--mono)}
+td:first-child{color:var(--txt);font-weight:700}
+tr:last-child td{border-bottom:none}
+td.hit{color:var(--amber);font-size:15px}
+td.miss{color:var(--faint)}
+td.n{color:var(--cyan);font-weight:700}
+td.idfv{color:var(--green);font-weight:700}
+/* IDF 对比条 */
+.idfchart{margin-top:10px}
+.idfrow{display:grid;grid-template-columns:56px 1fr 64px;gap:10px;align-items:center;margin:9px 0;font-family:var(--mono);font-size:12.5px}
+.idfrow .w{color:var(--txt);font-weight:700;text-align:right}
+.axistrack{position:relative;height:24px;background:var(--card2);border:1px solid var(--line);border-radius:8px}
+.axistrack::before{content:"";position:absolute;left:24%;top:0;bottom:0;border-left:1px solid var(--faint)}
+.ibar{position:absolute;top:3px;bottom:3px;border-radius:6px;width:0;transition:width 1s .2s}
+.ibar.pos{background:linear-gradient(90deg,rgba(52,211,153,.3),rgba(52,211,153,.85))}
+.ibar.neg{background:linear-gradient(270deg,rgba(251,113,133,.3),rgba(251,113,133,.85))}
+.idfrow .v{color:var(--dim)}
+/* 计算步骤 */
+.steps{font-family:var(--mono);font-size:13px;color:var(--dim);line-height:2.1}
+.steps b{color:var(--txt)}
+.steps .hl{color:var(--amber)}
+/* 产物清单 */
+table.prod td:first-child{color:var(--cyan);font-family:var(--mono);font-size:12.5px}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin:10px 0 0;font-size:12.5px;color:var(--dim);font-family:var(--mono)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.footnote{margin-top:56px;padding:26px 0 60px;border-top:1px solid var(--line);color:var(--faint);font-size:13px;font-family:var(--mono)}
+.stageflow{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;margin-top:6px}
+.stagenode{flex:1 1 200px;border:1px solid var(--line);background:var(--card2);border-radius:12px;padding:14px;border-top:2px solid var(--amber)}
+.stagenode.q{border-top-color:var(--green)}
+.stagenode .t{font-weight:700;font-size:14px}
+.stagenode .d{font-size:12.5px;color:var(--dim);font-family:var(--mono);margin-top:4px}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <span class="logo">bm25<b>·</b>构造期</span>
+  <a href="#corpus">语料</a><a href="#len">长度</a><a href="#tf">词频</a><a href="#df">文档频率</a><a href="#idf">IDF</a><a href="#score">查询期</a>
+</div></nav>
+
+<header><div class="wrap">
+  <div class="kicker">Okapi BM25 · Index-Time Formulas</div>
+  <h1>构造期公式 <span class="grad">图解</span></h1>
+  <p class="sub">BM25 分两阶段：<b style="color:var(--amber)">构造期</b>把所有"查询无关"的统计量一次算好，<b style="color:var(--green)">查询期</b>只做查表累加。本页用同一份 3 篇文档的迷你语料，把构造期 6 个公式逐个"画"出来：每条公式都配代入计算和可视化。</p>
+</div></header>
+
+<div class="wrap">
+
+<!-- 两阶段定位 -->
+<section class="mod" id="overview">
+  <div class="mod-head"><span class="num">00</span><h3>先看全局：钱花在哪一次？</h3></div>
+  <p class="tagline">构造期 = 索引一次，查询期 = 便宜 N 次。下面所有公式都是为了让右边的绿框"只查表、不计算"。</p>
+  <div class="card">
+    <div class="stageflow">
+      <div class="stagenode">
+        <div class="t">📍 构造期 <code>__init__</code></div>
+        <div class="d">输入: docs(词元列表)<br>遍历语料一次，产出 5 件产物<br>N · doc_len · avgdl · doc_freqs · idf</div>
+      </div>
+      <div class="stagenode q">
+        <div class="t">⚡ 查询期 <code>score()</code></div>
+        <div class="d">输入: query + doc_idx<br>O(查询词数) 查表累加<br>构造期产物直接复用</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 语料 -->
+<section class="mod" id="corpus">
+  <div class="mod-head"><span class="num">01</span><h3>贯穿全文的示例语料</h3></div>
+  <p class="tagline">3 篇文档，已分好词。构造期的每一个数字都从它们身上来。</p>
+  <div class="card">
+    <div class="docs">
+      <div class="doc">
+        <div class="id">D0</div>
+        <div class="body">“向量 检索 混合”</div>
+        <div class="chips"><span class="chip">向量</span><span class="chip">检索</span><span class="chip">混合</span></div>
+        <div class="len">长度 <b>3</b></div>
+      </div>
+      <div class="doc">
+        <div class="id">D1</div>
+        <div class="body">“检索 学习”</div>
+        <div class="chips"><span class="chip">检索</span><span class="chip">学习</span></div>
+        <div class="len">长度 <b>2</b></div>
+      </div>
+      <div class="doc">
+        <div class="id">D2</div>
+        <div class="body">“混合 检索”</div>
+        <div class="chips"><span class="chip">混合</span><span class="chip">检索</span></div>
+        <div class="len">长度 <b>2</b></div>
+      </div>
+    </div>
+    <p class="mini">为讲解简洁，这里把文档当作已分词的<b>词元序列</b>。真实实现（<code>tokenize.py</code>）会把中文切成<b>单字 + 相邻双字</b>（如“向量检索”→ 向/量/检/索/向量/量检/检索），机制完全相同，只是词元更细。</p>
+  </div>
+</section>
+
+<!-- 公式 1-3 -->
+<section class="mod" id="len">
+  <div class="mod-head"><span class="num">02</span><h3>公式 1–3：N、doc_len、avgdl</h3></div>
+  <p class="tagline">先量"地有多大"：语料几篇、每篇多长、平均多长。</p>
+  <div class="card">
+    <div class="grid">
+      <div>
+        <div class="formula">
+          N = |D| = <b>3</b>
+          <span class="cap">公式1 · 语料规模（文档篇数）</span>
+        </div>
+        <div class="formula">
+          doc_len(d) = |tokens(d)|
+          <span class="cap">公式2 · 单篇长度：词元个数（含重复）</span>
+        </div>
+        <div class="formula">
+          avgdl =
+          <span class="frac"><span class="top">3+2+2</span><span class="bot">3</span></span>
+          = <b>2.33</b>
+          <span class="cap">公式3 · 平均文档长度（防除零用 max(1,N)）</span>
+        </div>
+        <p class="mini">注意"含重复"：<b>["检索","检索"]</b> 的长度是 <b>2</b>，不是去重后的 1。avgdl 现在看似没用，它是查询期<b>长度归一化</b>的基准尺，必须构造期备好。</p>
+      </div>
+      <div>
+        <h4>长度条形图 · 虚线是平均线</h4>
+        <div class="lenchart">
+          <div class="lenrow"><span class="lab">D0</span>
+            <div class="track"><div class="bar b0" data-w="100"></div></div><span>|D0|=3（最长）</span></div>
+          <div class="lenrow"><span class="lab">D1</span>
+            <div class="track"><div class="bar b1" data-w="66.7"></div></div><span>|D1|=2</span></div>
+          <div class="lenrow"><span class="lab">D2</span>
+            <div class="track"><div class="bar b2" data-w="66.7"></div><span>|D2|=2</span></div>
+          <div class="lenrow"><span class="lab" style="color:var(--rose)">avg</span>
+            <div class="track" style="height:14px"><div class="avgline" data-l="77.8"><span>avgdl = 2.33</span></div></div><span style="color:var(--rose)">Σ7 ÷ N3</span></div>
+        </div>
+        <p class="mini">条长按 <b>|d| / max_len</b> 归一；平均线落在 2.33/3 ≈ 78% 处。查询期 D0 会因"比平均长"被 b 参数轻微惩罚。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 公式 4 -->
+<section class="mod" id="tf">
+  <div class="mod-head"><span class="num">03</span><h3>公式 4：词频 tf(t, d) = <code>Counter</code></h3></div>
+  <p class="tagline">每篇文档建一个正排计数器：这个词在这篇里出现几次。</p>
+  <div class="card">
+    <div class="formula">
+      doc_freqs[d] = <span class="f-cyan">Counter</span>(tokens(d))　→　tf(t, d) = t 在 d 中的<b>出现次数</b>
+      <span class="cap">公式4 · 每篇一个 Counter（正排，非倒排）</span>
+    </div>
+    <h4>以 D0 为例：“向量 检索 混合”</h4>
+    <div class="tfbox">
+      <div class="tfitem"><div class="w">向量</div><div class="dots"><i></i></div><div class="cnt">tf = <b>1</b></div></div>
+      <div class="tfitem"><div class="w">检索</div><div class="dots"><i></i></div><div class="cnt">tf = <b>1</b></div></div>
+      <div class="tfitem"><div class="w">混合</div><div class="dots"><i></i></div><div class="cnt">tf = <b>1</b></div></div>
+    </div>
+    <h4 style="margin-top:18px">换个有重复的例子：“检索 检索 学习”</h4>
+    <div class="tfbox">
+      <div class="tfitem"><div class="w">检索</div><div class="dots"><i></i><i></i></div><div class="cnt">tf = <b>2</b></div></div>
+      <div class="tfitem"><div class="w">学习</div><div class="dots"><i></i></div><div class="cnt">tf = <b>1</b></div></div>
+      <div class="tfitem" style="opacity:.55"><div class="w">混合</div><div class="dots"><i class="off"></i></div><div class="cnt">tf = <b>0</b>（不在本文档）</div></div>
+    </div>
+    <p class="mini">实现要点：<code>Counter(d)</code> 保留重复计数；查询期若 <code>term not in df</code> 直接 <code>continue</code>，贡献 0 分。库小时正排够用，生产系统会换成倒排（term → 文档列表）。</p>
+  </div>
+</section>
+
+<!-- 公式 5 -->
+<section class="mod" id="df">
+  <div class="mod-head"><span class="num">04</span><h3>公式 5：文档频率 n(t) = 出现矩阵行求和</h3></div>
+  <p class="tagline">把每篇文档的 Counter <b>只喂 keys()（去重）</b>再累加：统计"出现过该词的篇数"，每篇最多计 1。</p>
+  <div class="card">
+    <table>
+      <tr><th>词元 t</th><th>D0</th><th>D1</th><th>D2</th><th>n(t) 篇数</th><th>直观感受</th></tr>
+      <tr><td>检索</td><td class="hit">✓</td><td class="hit">✓</td><td class="hit">✓</td><td class="n">3 = N</td><td>人手一份，毫无区分度</td></tr>
+      <tr><td>混合</td><td class="hit">✓</td><td class="miss">·</td><td class="hit">✓</td><td class="n">2</td><td>过半文档都有</td></tr>
+      <tr><td>向量</td><td class="hit">✓</td><td class="miss">·</td><td class="miss">·</td><td class="n">1</td><td>独有，强信号</td></tr>
+      <tr><td>学习</td><td class="miss">·</td><td class="hit">✓</td><td class="miss">·</td><td class="n">1</td><td>独有，强信号</td></tr>
+    </table>
+    <p class="mini">代码只有两行：<code>for freq in doc_freqs: df.update(freq.keys())</code>。若误喂 <code>freq</code>（含次数），"检索"会算成 1+1+1 之外的更大值——那成了"总出现次数"，IDF 语义就错了。</p>
+  </div>
+</section>
+
+<!-- 公式 6 -->
+<section class="mod" id="idf">
+  <div class="mod-head"><span class="num">05</span><h3>公式 6：平滑 IDF（构造期的主角）</h3></div>
+  <p class="tagline">一个词"越稀有越值钱"。三处小机关：±0.5 伪计数、log 内 +1、自然对数。</p>
+  <div class="card">
+    <div class="formula" style="font-size:21px">
+      idf(t) = <span class="f-violet">ln</span>
+      <span style="font-size:26px">(</span>
+      <span class="frac">
+        <span class="top f-cyan">N − n(t) + 0.5</span>
+        <span class="bot f-rose">n(t) + 0.5</span>
+      </span>
+      <span style="font-size:26px">)</span>
+      <span class="f-green" style="font-size:24px">+ 1</span>
+      <span class="cap">RSJ 伪计数（±0.5）· Lucene 修正（+1）· 自然对数 ln</span>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--cyan)"></i>不含 t 的篇数（越多越稀有）</span>
+      <span><i style="background:var(--rose)"></i>含 t 的篇数（越多越大众）</span>
+      <span><i style="background:var(--green)"></i>防负分修正</span>
+    </div>
+    <div class="grid" style="margin-top:18px">
+      <div>
+        <h4>代入计算（N = 3）</h4>
+        <div class="steps">
+          <b>向量</b>（n=1）：<span class="hl">ln</span>( (3−1+<span class="f-cyan">0.5</span>)/(1+<span class="f-rose">0.5</span>) + <span class="f-green">1</span> ) = ln(2.667) = <b>0.981</b><br>
+          <b>混合</b>（n=2）：ln( 1.5/2.5 + 1 ) = ln(1.600) = <b>0.470</b><br>
+          <b>检索</b>（n=3）：ln( 0.5/3.5 + 1 ) = ln(1.143) = <b>0.134</b>
+        </div>
+        <p class="mini">规律：n(t) 越大 → idf 越小。“检索”人人都有，只配拿 0.134 分的权重；“向量”是 D0 独有信号，权重是它的 <b>7 倍</b>。</p>
+      </div>
+      <div>
+        <h4>IDF 条形图（越长越值钱）</h4>
+        <div class="idfchart">
+          <div class="idfrow"><span class="w">向量</span><div class="axistrack"><div class="ibar pos" data-w="24" style="left:24%"></div></div><span class="v">0.981</span></div>
+          <div class="idfrow"><span class="w">学习</span><div class="axistrack"><div class="ibar pos" data-w="24" style="left:24%"></div></div><span class="v">0.981</span></div>
+          <div class="idfrow"><span class="w">混合</span><div class="axistrack"><div class="ibar pos" data-w="11.5" style="left:24%"></div></div><span class="v">0.470</span></div>
+          <div class="idfrow"><span class="w">检索</span><div class="axistrack"><div class="ibar pos" data-w="3.3" style="left:24%"></div></div><span class="v">0.134</span></div>
+        </div>
+        <p class="mini">零轴在左侧 24% 处，左侧空间留给下一张"没有 +1"的反例。</p>
+      </div>
+    </div>
+    <h4 style="margin-top:20px">反例：去掉 "+1" 会怎样？</h4>
+    <div class="idfchart">
+      <div class="idfrow"><span class="w">检索</span><div class="axistrack"><div class="ibar neg" data-w="18" style="right:24%"></div></div><span class="v" style="color:var(--rose)">−1.946</span></div>
+    </div>
+    <p class="mini">无修正时 idf(检索) = ln(0.5/3.5) = ln(1/7) ≈ <b>−1.95</b>：三篇全命中的高频词会<b style="color:var(--rose)">倒扣总分</b>，出现得越多排名越低，违反直觉。log 内 <b>+1</b> 把 IDF 下限抬到恒为正，高频词只是"趋近 0 不加分"，绝不惩罚。</p>
+  </div>
+</section>
+
+<!-- 查询期 -->
+<section class="mod" id="score">
+  <div class="mod-head"><span class="num">06</span><h3>收尾：构造期产物在查询期的位置</h3></div>
+  <p class="tagline">看懂这张"消费地图"，构造期 6 个公式就全部闭环了。彩色部分全部来自构造期，查询期只做查表。</p>
+  <div class="card">
+    <div class="formula" style="font-size:17px">
+      score(q, d) = <span style="font-size:22px">Σ</span><sub>t∈q</sub> qtf(t) ·
+      <span class="f-green">idf(t)</span> ·
+      <span class="frac">
+        <span class="top f-cyan">tf(t,d) · (k1+1)</span>
+        <span class="bot">tf(t,d) + k1·(1 − b + b · <span class="f-amber">|D_d| / avgdl</span>)</span>
+      </span>
+      <span class="cap">k1=1.5 词频饱和 · b=0.75 长度归一强度（均在查询期生效）</span>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--green)"></i>idf：构造期字典查表</span>
+      <span><i style="background:var(--cyan)"></i>tf：构造期 Counter 查表</span>
+      <span><i style="background:var(--amber)"></i>doc_len / avgdl：构造期备好的长度尺</span>
+    </div>
+    <table class="prod" style="margin-top:16px">
+      <tr><th>构造期产物</th><th>类型</th><th>查询期消费方式</th></tr>
+      <tr><td>n_docs</td><td>int</td><td>idf 公式的 N（仅构造期用）</td></tr>
+      <tr><td>doc_len</td><td>list[int]</td><td>分母中的 |D_d|，做长度归一</td></tr>
+      <tr><td>avgdl</td><td>float</td><td>长度归一化的基准尺</td></tr>
+      <tr><td>doc_freqs</td><td>list[Counter]</td><td>查 tf(t,d)；词不在则跳过</td></tr>
+      <tr><td>idf</td><td>dict[str,float]</td><td>每个命中词的权重，直接相乘</td></tr>
+    </table>
+    <p class="mini">一句话总结：<b>构造期把 O(全库) 的统计成本付一次，查询期每次只付 O(查询词数 × 查表)</b>。k1 管"词出现第 10 次还值不值钱"（饱和），b 管"长文档该不该打折"，它们在构造期只是被存起来。</p>
+  </div>
+</section>
+
+<div class="footnote">
+  hybrid-retrieval · hybrid_search/bm25.py · 构造期公式图解 · 配套页面：<a href="module-tour.html" style="color:var(--cyan)">模块运行机制详解</a>
+</div>
+</div>
+
+<script>
+const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){
+  e.target.querySelectorAll('[data-w]').forEach(b=>b.style.width=b.dataset.w+'%');
+  e.target.querySelectorAll('[data-l]').forEach(b=>b.style.left=b.dataset.l+'%');
+  io.unobserve(e.target);
+}})},{threshold:.3});
+document.querySelectorAll('.card').forEach(c=>io.observe(c));
+const secs=[...document.querySelectorAll('section.mod')];
+const links=[...document.querySelectorAll('nav a')];
+const spy=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){
+  links.forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+e.target.id));
+}})},{rootMargin:'-30% 0px -60% 0px'});
+secs.forEach(s=>spy.observe(s));
+</script>
+</body>
+</html>
