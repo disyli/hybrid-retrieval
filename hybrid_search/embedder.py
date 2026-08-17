@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 from collections import Counter
 
 from .tokenize import tokenize
@@ -49,9 +50,21 @@ class SentenceTransformerEmbedder:
     """
 
     def __init__(self, model_name: str = "paraphrase-multilingual-MiniLM-L12-v2") -> None:
+        # 国内网络直连 huggingface.co 通常不可达；默认改走镜像，用户已显式设置时尊重其配置。
+        os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
         from sentence_transformers import SentenceTransformer  # 懒加载
 
         self._model = SentenceTransformer(model_name)
 
     def embed(self, text: str) -> list[float]:
         return self._model.encode(text, normalize_embeddings=True).tolist()
+
+
+def make_embedder(prefer_semantic: bool = True):
+    """默认优先返回真正的语义嵌入器；未安装 sentence-transformers 时回退哈希嵌入器。"""
+    if prefer_semantic:
+        try:
+            return SentenceTransformerEmbedder()
+        except Exception:
+            pass
+    return HashEmbedder()

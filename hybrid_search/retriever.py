@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from .bm25 import BM25
-from .embedder import HashEmbedder
+from .embedder import make_embedder
 from .models import Document
-from .reranker import Reranker, RuleReranker
+from .reranker import Reranker, RuleReranker, make_reranker
 from .tokenize import tokenize
 from .vector_index import make_index
 
@@ -21,8 +21,8 @@ class HybridRetriever:
         candidate_k: int = 20,
     ) -> None:
         self.documents = documents
-        self.embedder = embedder or HashEmbedder()
-        self.reranker = reranker or RuleReranker()
+        self.embedder = embedder or make_embedder()
+        self.reranker = reranker or make_reranker()
         self.rrf_k = rrf_k
         self.candidate_k = candidate_k
         self.tokens = [tokenize(d.title + " " + d.text) for d in documents]

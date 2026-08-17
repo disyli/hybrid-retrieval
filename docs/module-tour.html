@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>hybrid-retrieval 模块运行机制详解</title>
+<style>
+:root{
+  --bg:#0b0f17; --card:#121826; --card2:#0e1420; --line:#1f2a3a;
+  --txt:#e6eaf2; --dim:#8b95a7; --faint:#5b6678;
+  --amber:#fbbf24; --violet:#a78bfa; --cyan:#22d3ee; --green:#34d399; --rose:#fb7185;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:76px}
+body{background:var(--bg);color:var(--txt);font:16px/1.75 -apple-system,"SF Pro Text","PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+::selection{background:rgba(34,211,238,.28)}
+.wrap{max-width:1060px;margin:0 auto;padding:0 24px}
+
+/* 顶部进度感导航 */
+nav{position:sticky;top:0;z-index:50;background:rgba(11,15,23,.82);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;gap:6px;height:56px;overflow-x:auto;scrollbar-width:none}
+nav .wrap::-webkit-scrollbar{display:none}
+nav .logo{font-weight:700;letter-spacing:.5px;margin-right:10px;white-space:nowrap}
+nav .logo b{color:var(--cyan)}
+nav a{color:var(--dim);text-decoration:none;font-size:12.5px;font-family:var(--mono);padding:5px 10px;border-radius:99px;border:1px solid transparent;white-space:nowrap;transition:.2s}
+nav a:hover{color:var(--txt);border-color:var(--line);background:var(--card)}
+
+/* Hero */
+header{padding:72px 0 40px;position:relative;overflow:hidden}
+header::before{content:"";position:absolute;inset:-40% -20% auto;height:520px;background:
+  radial-gradient(600px 260px at 18% 30%,rgba(251,191,36,.10),transparent 60%),
+  radial-gradient(600px 260px at 82% 20%,rgba(167,139,250,.12),transparent 60%),
+  radial-gradient(700px 300px at 50% 90%,rgba(34,211,238,.10),transparent 60%);pointer-events:none}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:3px;color:var(--cyan);text-transform:uppercase}
+h1{font-size:clamp(30px,4.6vw,46px);font-weight:800;letter-spacing:-.5px;margin:10px 0 14px}
+h1 .grad{background:linear-gradient(92deg,var(--amber),var(--violet) 45%,var(--cyan) 80%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--dim);max-width:760px;font-size:16.5px}
+.stats{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+.stat{font-family:var(--mono);font-size:12.5px;color:var(--dim);border:1px solid var(--line);background:var(--card2);border-radius:99px;padding:6px 14px}
+.stat b{color:var(--txt)}
+
+/* 总览管线 */
+.pipeline{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px 22px;margin:26px 0 8px;position:relative}
+.pipeline h2{font-size:14px;letter-spacing:2px;color:var(--dim);font-family:var(--mono);margin-bottom:18px}
+.flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px}
+.node{flex:1 1 120px;min-width:118px;border:1px solid var(--line);background:var(--card2);border-radius:12px;padding:12px 10px;text-align:center;position:relative}
+.node .t{font-weight:700;font-size:13.5px}
+.node .d{font-size:11.5px;color:var(--dim);font-family:var(--mono);margin-top:3px}
+.node.lex{border-top:2px solid var(--amber)} .node.sem{border-top:2px solid var(--violet)}
+.node.fuse{border-top:2px solid var(--cyan)} .node.gen{border-top:2px solid var(--green)}
+.node.eval{border-top:2px solid var(--rose)}
+.arrow{align-self:center;color:var(--faint);font-family:var(--mono);font-size:16px;flex:0 0 auto}
+.duo{margin-top:16px;font-size:13px;color:var(--dim)}
+.duo code{color:var(--txt);background:var(--card2);padding:1px 7px;border-radius:6px;font-size:12px}
+
+/* 模块卡片 */
+section.mod{margin:56px 0}
+.mod-head{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:6px}
+.num{font-family:var(--mono);font-size:13px;color:var(--faint);letter-spacing:2px}
+h3{font-size:24px;font-weight:800;letter-spacing:-.3px}
+h3 code{font-family:var(--mono);font-size:19px;font-weight:600;color:var(--cyan)}
+.tagline{color:var(--dim);margin-bottom:18px}
+.badges{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+.badge{font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:99px;border:1px solid}
+.b-def{color:var(--green);border-color:rgba(52,211,153,.4);background:rgba(52,211,153,.08)}
+.b-fb{color:var(--amber);border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.07)}
+.b-zero{color:var(--dim);border-color:var(--line)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+@media(max-width:920px){.grid{grid-template-columns:1fr}}
+h4{font-size:13px;letter-spacing:1.5px;font-family:var(--mono);color:var(--dim);margin-bottom:12px;text-transform:uppercase}
+
+/* 步骤 */
+ol.steps{list-style:none;counter-reset:s}
+ol.steps li{counter-increment:s;position:relative;padding:0 0 16px 40px}
+ol.steps li::before{content:counter(s,decimal-leading-zero);position:absolute;left:0;top:2px;font-family:var(--mono);font-size:11px;color:var(--bg);background:var(--cyan);border-radius:6px;padding:2px 6px;font-weight:700}
+ol.steps li b{color:var(--txt)}
+ol.steps li{color:var(--dim);font-size:14.5px}
+ol.steps li:last-child{padding-bottom:0}
+ol.steps code,p code,li code,td code{font-family:var(--mono);font-size:12.5px;background:var(--card2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--cyan)}
+
+/* 代码块 */
+.codebox{background:#0a0e15;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.codebox .bar{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--card2)}
+.dot{width:9px;height:9px;border-radius:50%}
+.dot.r{background:#f87171}.dot.y{background:#fbbf24}.dot.g{background:#34d399}
+.codebox .bar span{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-left:4px}
+pre{padding:16px;overflow-x:auto;font-family:var(--mono);font-size:12.6px;line-height:1.72;color:#c9d4e5}
+pre .c{color:#5b6678;font-style:italic}
+pre .k{color:#c792ea}
+pre .s{color:#ecc48d}
+pre .f{color:#82aaff}
+pre .n{color:#f78c6c}
+
+/* 公式 */
+.formula{background:var(--card2);border:1px dashed var(--line);border-radius:12px;padding:16px 18px;margin:14px 0;text-align:center;font-family:"Georgia",'Times New Roman',serif;font-size:16.5px;color:var(--txt);font-style:italic}
+.formula .cap{display:block;font-family:var(--mono);font-style:normal;font-size:11px;color:var(--faint);margin-top:8px;letter-spacing:1px}
+sub,sup{font-size:11px}
+.frac{display:inline-block;vertical-align:middle;text-align:center;margin:0 3px}
+.frac .top{display:block;padding:0 6px;border-bottom:1px solid var(--txt)}
+.frac .bot{display:block;padding:0 6px}
+
+/* 小图 */
+.mini{margin-top:14px;font-size:13px;color:var(--dim);border-left:2px solid var(--cyan);padding:4px 0 4px 14px}
+.mini b{color:var(--txt)}
+table{width:100%;border-collapse:collapse;margin-top:14px;font-size:13.5px}
+th{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--faint);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);text-transform:uppercase}
+td{padding:9px 10px;border-bottom:1px solid rgba(31,42,58,.6);color:var(--dim)}
+td:first-child,th:first-child{color:var(--txt)}
+tr:last-child td{border-bottom:none}
+.tok-demo{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.chip{font-family:var(--mono);font-size:12px;padding:3px 9px;border-radius:8px;border:1px solid}
+.chip.uni{color:var(--amber);border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.06)}
+.chip.bi{color:var(--violet);border-color:rgba(167,139,250,.35);background:rgba(167,139,250,.06)}
+.chip.en{color:var(--cyan);border-color:rgba(34,211,238,.35);background:rgba(34,211,238,.06)}
+.footnote{margin-top:56px;padding:26px 0 60px;border-top:1px solid var(--line);color:var(--faint);font-size:13px;font-family:var(--mono)}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <span class="logo">hybrid<b>·</b>retrieval</span>
+  <a href="#overview">总览</a><a href="#tok">01 分词</a><a href="#bm25">02 BM25</a><a href="#emb">03 嵌入</a><a href="#idx">04 索引</a><a href="#ret">05 融合</a><a href="#rr">06 重排</a><a href="#rag">07 生成</a><a href="#ev">08 评估</a>
+</div></nav>
+
+<header><div class="wrap">
+  <div class="kicker">Module Tour · 按数据流顺序逐模块拆解</div>
+  <h1>hybrid-retrieval <span class="grad">运行机制详解</span></h1>
+  <p class="sub">一条完整的检索链路：<b style="color:var(--amber)">BM25 词法召回</b> 与 <b style="color:var(--violet)">向量语义召回</b> 并行出发，经 <b style="color:var(--cyan)">RRF 排名融合</b> 与 <b style="color:var(--green)">交叉编码器精排</b>，最终供 <b style="color:var(--rose)">带引用的 RAG 生成</b> 与离线评估消费。每个模块遵循同一设计哲学：装了依赖即用真模型，没装自动回退轻量实现。</p>
+  <div class="stats">
+    <span class="stat"><b>9</b> 个源文件 · <b>&lt;450</b> 行核心代码</span>
+    <span class="stat">语料 <b>17</b> 篇 · 标注查询 <b>16</b> 条</span>
+    <span class="stat">默认 <b>语义嵌入 + 交叉编码器重排</b></span>
+    <span class="stat">未装依赖 → <b>哈希嵌入 + 规则重排</b> 兜底</span>
+  </div>
+</div></header>
+
+<div class="wrap">
+
+<!-- ═══════════ 总览 ═══════════ -->
+<div class="pipeline" id="overview">
+  <h2>▍PIPELINE · 一次检索的完整旅程</h2>
+  <div class="flow">
+    <div class="node"><div class="t">📋 corpus.jsonl</div><div class="d">17 篇文档</div></div>
+    <div class="arrow">→</div>
+    <div class="node lex"><div class="t">✂️ tokenize</div><div class="d">字 + bigram</div></div>
+    <div class="arrow">→</div>
+    <div class="node lex"><div class="t">🔍 BM25</div><div class="d">词法召回 top20</div></div>
+    <div class="arrow">⇢</div>
+    <div class="node fuse"><div class="t">⚖️ RRF 融合</div><div class="d">1/(60+rank)</div></div>
+    <div class="arrow">→</div>
+    <div class="node fuse"><div class="t">🥇 Reranker</div><div class="d">交叉编码器</div></div>
+    <div class="arrow">→</div>
+    <div class="node gen"><div class="t">💬 RAG</div><div class="d">带 [1][2] 引用</div></div>
+    <div class="arrow">⇢</div>
+    <div class="node eval"><div class="t">📏 evaluate</div><div class="d">recall@5 / MRR</div></div>
+  </div>
+  <div class="flow" style="margin-top:8px">
+    <div class="node" style="flex:0 1 240px;border-top:2px solid var(--violet)"><div class="t">🧮 Embedder</div><div class="d">MiniLM 384 维 · 兜底: 哈希512</div></div>
+    <div class="arrow">→</div>
+    <div class="node sem" style="flex:0 1 220px"><div class="t">🗂️ VectorIndex</div><div class="d">Faiss IP · 兜底: Flat</div></div>
+    <div class="arrow">⇣</div>
+    <div class="node" style="flex:1;border-top:2px dashed var(--line)"><div class="t" style="color:var(--dim)">语义支路汇入 RRF</div><div class="d">与 BM25 支路对称</div></div>
+  </div>
+  <p class="duo">设计哲学：<code>make_embedder()</code> / <code>make_reranker()</code> / <code>make_index()</code> 三个工厂统一实现「<b>默认真模型 · 未装依赖静默回退</b>」——接口签名完全一致，clone 即跑，装好依赖零代码变强。</p>
+</div>
+
+<!-- ═══════════ 01 tokenize ═══════════ -->
+<section class="mod" id="tok">
+  <div class="mod-head">
+    <span class="num">MODULE 01</span>
+    <h3>分词器 <code>tokenize.py</code></h3>
+    <div class="badges"><span class="badge b-zero">25 行 · 纯标准库</span><span class="badge b-def">全链路唯一入口</span></div>
+  </div>
+  <p class="tagline">中文不依赖分词库：单字 + 相邻双字（bigram），英文按字母数字串。是 BM25 与哈希嵌入共用的一致词元空间。</p>
+  <div class="card"><div class="grid">
+    <div>
+      <h4>运行机制</h4>
+      <ol class="steps">
+        <li><b>统一小写</b>：<code>text.lower()</code>，让 "Hybrid" 与 "hybrid" 落入同一词元。</li>
+        <li><b>正则切出中文连续段</b>：<code>_CJK</code> 匹配 <code>\u4e00-\u9fff</code> 连续汉字；段与段之间的非中文部分交给 <code>_ALNUM</code> 抓英文/数字串。</li>
+        <li><b>中文段双份产出</b>：每个汉字出一个 unigram，每个相邻汉字对出一个 bigram —— "混合检索" 产出 4 个单字 + 3 个双字。</li>
+        <li><b>保留重复</b>：返回带重复的 list 而非 set，因为下游 BM25 需要统计词频 TF。</li>
+      </ol>
+      <div class="mini"><b>为什么 bigram 近似词义：</b>"混合检索" 无论被正确切成"混合/检索"还是错误切成"合检"，bigram 集合都高度重叠 —— 用冗余换鲁棒，永不切错。</div>
+    </div>
+    <div>
+      <div class="codebox"><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span>tokenize.py · 核心 12 行</span></div>
+<pre><span class="k">def</span> <span class="f">tokenize</span>(text: <span class="n">str</span>) -> <span class="n">list</span>[<span class="n">str</span>]:
+    text = text.lower()
+    tokens, pos = [], <span class="n">0</span>
+    <span class="k">for</span> match <span class="k">in</span> _CJK.finditer(text):          <span class="c"># 中文连续段</span>
+        <span class="k">if</span> match.start() > pos:
+            tokens.extend(_ALNUM.findall(text[pos:match.start()]))
+        run = match.group()
+        tokens.extend(run)                            <span class="c"># 单字 unigram</span>
+        tokens.extend(run[i:i+<span class="n">2</span>] <span class="k">for</span> i <span class="k">in</span> <span class="f">range</span>(<span class="f">len</span>(run)-<span class="n">1</span>))  <span class="c"># 双字 bigram</span>
+        pos = match.end()
+    <span class="k">return</span> tokens  <span class="c"># 带重复，供 BM25 计词频</span></pre></div>
+      <p style="margin-top:14px;font-size:13px;color:var(--dim)">输入 <code>"混合检索hybrid"</code> 的实际产出：</p>
+      <div class="tok-demo">
+        <span class="chip uni">混</span><span class="chip uni">合</span><span class="chip uni">检</span><span class="chip uni">索</span>
+        <span class="chip bi">混合</span><span class="chip bi">合检</span><span class="chip bi">检索</span>
+        <span class="chip en">hybrid</span>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════ 02 BM25 ═══════════ -->
+<section class="mod" id="bm25">
+  <div class="mod-head">
+    <span class="num">MODULE 02</span>
+    <h3>词法检索 <code>bm25.py</code></h3>
+    <div class="badges"><span class="badge b-zero">36 行 · 纯标准库</span></div>
+  </div>
+  <p class="tagline">标准 Okapi BM25：词越稀有越值钱（IDF），词频收益递减（TF 饱和），长文档打折（长度归一）。</p>
+  <div class="card"><div class="grid">
+    <div>
+      <h4>运行机制 · 构造期（离线一次）</h4>
+      <ol class="steps">
+        <li>对每篇已分词文档建 <code>Counter</code> 词频表，记录 <code>doc_len</code> 与全库平均长度 <code>avgdl</code>。</li>
+        <li>汇总每词的文档频率 <code>df</code>，预计算 <b>IDF</b>：一个词出现在越少的文档里，权重越高。</li>
+      </ol>
+      <h4 style="margin-top:18px">运行机制 · 打分期（每查询）</h4>
+      <ol class="steps" style="counter-reset:s 2">
+        <li>对查询的每个词元：词不在文档中直接跳过；在则累加一项 <b>IDF × 饱和TF × 查询词频qtf</b>。</li>
+        <li>TF 项分子含 <code>(k1+1)</code>、分母含 <code>tf + k1·(...)</code> —— tf 再大，单项得分也被封顶在 <code>IDF·(k1+1)</code> 附近。</li>
+        <li>分母中的 <code>b</code> 控制长度惩罚：文档比平均越长，分母越大，得分越被稀释。</li>
+      </ol>
+    </div>
+    <div>
+      <div class="formula">
+        IDF(t) = ln <span class="frac"><span class="top">N − df(t) + 0.5</span><span class="bot">df(t) + 0.5</span></span> + 1
+        <span class="cap">IDF · 稀有词高权重</span>
+      </div>
+      <div class="formula">
+        score(D,Q) = Σ<sub>t∈Q</sub> IDF(t) ·
+        <span class="frac"><span class="top">tf(t,D) · (k<sub>1</sub>+1)</span><span class="bot">tf(t,D) + k<sub>1</sub>·(1 − b + b·|D|/avgdl)</span></span> · qtf(t)
+        <span class="cap">Okapi BM25 · k₁=1.5, b=0.75</span>
+      </div>
+      <div class="codebox"><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span>bm25.py · 打分循环</span></div>
+<pre>score = <span class="n">0.0</span>
+<span class="k">for</span> term, qtf <span class="k">in</span> qfreq.items():
+    <span class="k">if</span> term <span class="k">not in</span> df:          <span class="c"># 查询词不在文档 → 跳过</span>
+        <span class="k">continue</span>
+    tf = df[term]
+    denom = tf + self.k1 * (<span class="n">1</span> - self.b + self.b * dl / self.avgdl)
+    score += self.idf[term] * tf * (self.k1 + <span class="n">1</span>) / denom * qtf</pre></div>
+      <div class="mini"><b>三个直觉：</b>IDF 管"什么词重要"，k₁ 管"重复出现还值不值钱"，b 管"长文档是否注水"。</div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════ 03 embedder ═══════════ -->
+<section class="mod" id="emb">
+  <div class="mod-head">
+    <span class="num">MODULE 03</span>
+    <h3>文本嵌入器 <code>embedder.py</code></h3>
+    <div class="badges"><span class="badge b-def">默认 · SentenceTransformer 语义向量</span><span class="badge b-fb">兜底 · HashEmbedder</span></div>
+  </div>
+  <p class="tagline">统一接口 <code>embed(text) → list[float]</code>。语义版理解"意思相近"，哈希版只看"字面重叠"—— 同一插槽的两种实现。</p>
+  <div class="card"><div class="grid">
+    <div>
+      <h4>SentenceTransformerEmbedder（默认）</h4>
+      <ol class="steps">
+        <li>构造时懒加载 <code>sentence-transformers</code>，模型 <code>paraphrase-multilingual-MiniLM-L12-v2</code>（12 层 MiniLM，多语言含中文）。</li>
+        <li>文本过 Transformer 编码器，token 向量做 <b>mean pooling</b> 得句向量，输出前 <b>归一化</b>。</li>
+        <li>得到 <b>384 维单位向量</b>：余弦相似度退化为点积；"怎么合并两路结果" 与 "RRF 融合" 这种零词面重叠的同义对，距离也会很近。</li>
+      </ol>
+      <h4 style="margin-top:18px">HashEmbedder（兜底）</h4>
+      <ol class="steps">
+        <li>复用 <code>tokenize()</code> 词元，每个词 <code>sha256</code> 后 <code>% 512</code> 落入固定槽位。</li>
+        <li>槽位累加 <code>1 + ln(count)</code> —— 子线性词频，防高频词霸占向量。</li>
+        <li>L2 归一化后输出。本质是<b>词袋的哈希投影</b>：确定性、零依赖，但只有词法没有语义。</li>
+      </ol>
+    </div>
+    <div>
+      <div class="codebox"><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span>embedder.py · 两种实现</span></div>
+<pre><span class="c"># 语义版：真·理解意思（默认）</span>
+<span class="k">class</span> <span class="f">SentenceTransformerEmbedder</span>:
+    <span class="k">def</span> <span class="f">embed</span>(self, text):
+        <span class="k">return</span> self._model.encode(text,
+            normalize_embeddings=<span class="n">True</span>).tolist()  <span class="c"># 384 维</span>
+
+<span class="c"># 兜底版：字面哈希词袋</span>
+<span class="k">class</span> <span class="f">HashEmbedder</span>:
+    <span class="k">def</span> <span class="f">embed</span>(self, text):
+        vec = [<span class="n">0.0</span>] * self.dim
+        <span class="k">for</span> term, count <span class="k">in</span> <span class="f">Counter</span>(tokenize(text)).items():
+            idx = _hash_token(term, self.dim)      <span class="c"># sha256 % 512</span>
+            vec[idx] += <span class="n">1.0</span> + math.log(count)     <span class="c"># 子线性 TF</span>
+        <span class="k">return</span> [v / norm <span class="k">for</span> v <span class="k">in</span> vec]     <span class="c"># L2 归一化</span>
+
+<span class="k">def</span> <span class="f">make_embedder</span>(prefer_semantic=<span class="n">True</span>):
+    <span class="k">try</span>:    <span class="k">return</span> <span class="f">SentenceTransformerEmbedder</span>()  <span class="c"># 默认</span>
+    <span class="k">except</span> Exception: <span class="k">pass</span>
+    <span class="k">return</span> <span class="f">HashEmbedder</span>()                      <span class="c"># 静默回退</span></pre></div>
+      <table>
+        <tr><th></th><th>语义版</th><th>哈希兜底</th></tr>
+        <tr><td>维度</td><td>384 稠密</td><td>512 稀疏</td></tr>
+        <tr><td>同义改写</td><td>✅ 能召回</td><td>❌ 词面不同即失联</td></tr>
+        <tr><td>依赖</td><td>sentence-transformers + torch</td><td>无</td></tr>
+        <tr><td>确定性</td><td>固定模型 → 确定</td><td>sha256 → 确定</td></tr>
+      </table>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════ 04 vector_index ═══════════ -->
+<section class="mod" id="idx">
+  <div class="mod-head">
+    <span class="num">MODULE 04</span>
+    <h3>向量索引 <code>vector_index.py</code></h3>
+    <div class="badges"><span class="badge b-def">默认 · FaissIndex</span><span class="badge b-fb">兜底 · FlatIndex</span></div>
+  </div>
+  <p class="tagline">统一接口 <code>search(query, k) → [(下标, 分数)]</code>。兜底版纯 Python 暴力扫全库，Faiss 版仍是精确检索、只是用矩阵运算加速。</p>
+  <div class="card"><div class="grid">
+    <div>
+      <h4>FlatIndex · 兜底</h4>
+      <ol class="steps">
+        <li>存住全部向量，查询时对每个向量逐一算 <code>cosine()</code>。</li>
+        <li>全量排序取 top-k。复杂度 O(N·d) —— 17 篇文档毫秒级，百万篇就不可用。</li>
+      </ol>
+      <h4 style="margin-top:18px">FaissIndex · 默认</h4>
+      <ol class="steps">
+        <li>构造期把向量堆成 float32 矩阵，<code>faiss.normalize_L2</code> 原地归一化。</li>
+        <li>建 <code>IndexFlatIP</code>（内积索引）并 <code>add</code> 全库。<b>归一化后内积 ≡ 余弦</b>，这是全套三角换算的关键一步。</li>
+        <li>查询向量同样归一化后 <code>search</code>，底层是 BLAS/SIMD 批量矩阵乘，比 Python 循环快几个数量级。</li>
+      </ol>
+      <div class="mini"><b>注意：</b>IndexFlat 仍是"精确"近邻（无近似损失）。工业界百万级会换 <b>IVF / HNSW</b> 索引，用少量召回率换速度 —— 本仓库刻意保持精确，教学优先。</div>
+    </div>
+    <div>
+      <div class="formula">
+        cos(a, b) = <span class="frac"><span class="top">a · b</span><span class="bot">|a| · |b|</span></span>  <span style="font-style:normal">— 归一化后 —</span>  a · b
+        <span class="cap">余弦 → 点积的降维打击</span>
+      </div>
+      <div class="codebox"><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span>vector_index.py · Faiss 路径</span></div>
+<pre>matrix = np.asarray(vectors, dtype=<span class="s">"float32"</span>)
+faiss.normalize_L2(matrix)              <span class="c"># 单位向量</span>
+self._index = faiss.IndexFlatIP(matrix.shape[<span class="n">1</span>])  <span class="c"># 内积索引</span>
+self._index.add(matrix)
+
+<span class="k">def</span> <span class="f">search</span>(self, query, k):
+    q = np.asarray([query], dtype=<span class="s">"float32"</span>)
+    faiss.normalize_L2(q)               <span class="c"># 查询同样归一化</span>
+    distances, indices = self._index.search(q, k)
+    <span class="k">return</span> <span class="f">list</span>(<span class="f">zip</span>(indices[<span class="n">0</span>].tolist(), distances[<span class="n">0</span>].tolist()))
+
+<span class="c"># make_index(vectors, "auto")：faiss 可导入→用之；ImportError→FlatIndex</span></pre></div>
+      <table>
+        <tr><th></th><th>FlatIndex</th><th>FaissIndex</th></tr>
+        <tr><td>算法</td><td>逐条余弦</td><td>批量内积矩阵乘</td></tr>
+        <tr><td>精确性</td><td>精确</td><td>精确（Flat 系）</td></tr>
+        <tr><td>依赖</td><td>无</td><td>faiss-cpu + numpy</td></tr>
+      </table>
+    </div>
+  </div></div>
+</section>
+<!-- ═══════════ 05 retriever ═══════════ -->
+<section class="mod" id="ret">
+  <div class="mod-head">
+    <span class="num">MODULE 05</span>
+    <h3>融合检索器 <code>retriever.py</code></h3>
+    <div class="badges"><span class="badge b-def">系统总指挥</span></div>
+  </div>
+  <p class="tagline">两条召回支路 + RRF 排名融合 + 喂给重排器。<code>HybridRetriever</code> 是把前 4 个模块串成流水线的 orchestrator。</p>
+  <div class="card"><div class="grid">
+    <div>
+      <h4>构造期（离线建库）</h4>
+      <ol class="steps">
+        <li>每篇文档 <code>title + " " + text</code> 拼接 → <code>tokenize</code> → 建 <b>BM25 索引</b>。</li>
+        <li>同一份拼接文本 → <code>embedder.embed</code> → <code>make_index</code> 建<b>向量索引</b>。两路索引共享同一原文，只是"视图"不同。</li>
+      </ol>
+      <h4 style="margin-top:18px">检索期（在线，每查询）</h4>
+      <ol class="steps" style="counter-reset:s 2">
+        <li><b>双路召回</b>：BM25 全量打分取前 <code>k=min(20, N)</code>；向量索引搜前 k。注意只取 20 个候选 —— 粗排求"别漏"，不求"排准"。</li>
+        <li><b>RRF 融合</b>：每路内部按排名 1..k 产生 <code>1/(60+rank)</code> 分；<b>两路都命中的文档分数相加</b>，天然把"双路共识"顶到最前。</li>
+        <li><b>交给重排器</b>：<code>reranker.rerank(query, candidates, rrf_scores)</code> 精排，最后切 <code>top_k</code> 返回。</li>
+      </ol>
+      <div class="mini"><b>为什么用排名不用分数：</b>BM25 分数可以是 8.7，余弦是 0.83，量纲完全不可比；而"排名第 1"在两边是同一种语言。<b>RRF 只消费排名，天然免疫量纲。</b></div>
+    </div>
+    <div>
+      <div class="formula">
+        RRF(d) = Σ<sub>支路 i</sub>  <span class="frac"><span class="top">1</span><span class="bot">k<sub>rrf</sub> + rank<sub>i</sub>(d)</span></span>  ,&nbsp; k<sub>rrf</sub> = 60
+        <span class="cap">Reciprocal Rank Fusion</span>
+      </div>
+      <div class="codebox"><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span>retriever.py · retrieve() 融合段</span></div>
+<pre>bm25 = self._bm25_scores(query)
+bm25_order = <span class="f">sorted</span>(<span class="f">range</span>(n), key=<span class="k">lambda</span> i: bm25[i],
+                reverse=<span class="n">True</span>)[:k]        <span class="c"># 词法 top-20</span>
+vec_hits = self.index.search(
+    self.embedder.embed(query), k)             <span class="c"># 语义 top-20</span>
+
+rrf = {}
+<span class="k">for</span> rank, idx <span class="k">in</span> <span class="f">enumerate</span>(bm25_order, start=<span class="n">1</span>):
+    rrf[idx] = rrf.get(idx, <span class="n">0.0</span>) + <span class="n">1.0</span> / (self.rrf_k + rank)
+<span class="k">for</span> rank, (idx, _) <span class="k">in</span> <span class="f">enumerate</span>(vec_hits, start=<span class="n">1</span>):
+    rrf[idx] = rrf.get(idx, <span class="n">0.0</span>) + <span class="n">1.0</span> / (self.rrf_k + rank)
+
+ranked = self.reranker.rerank(query, candidates, scores)
+<span class="k">return</span> ranked[:top_k]</pre></div>
+      <table>
+        <tr><th>文档</th><th>BM25 路</th><th>向量路</th><th>RRF 总分</th></tr>
+        <tr><td>d03 双路第1/第2</td><td>1/61 ≈ 0.0164</td><td>1/62 ≈ 0.0161</td><td><b style="color:var(--green)">0.0325 ✓ 顶到第一</b></td></tr>
+        <tr><td>仅单路第1</td><td>1/61 ≈ 0.0164</td><td>—</td><td>0.0164</td></tr>
+      </table>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════ 06 reranker ═══════════ -->
+<section class="mod" id="rr">
+  <div class="mod-head">
+    <span class="num">MODULE 06</span>
+    <h3>重排器 <code>reranker.py</code></h3>
+    <div class="badges"><span class="badge b-def">默认 · CrossEncoder bge-reranker-base</span><span class="badge b-fb">兜底 · RuleReranker</span></div>
+  </div>
+  <p class="tagline">粗排只保证"前 20 里有答案"，精排负责"把答案顶到前 3"。统一接口 <code>rerank(query, candidates, scores)</code>。</p>
+  <div class="card"><div class="grid">
+    <div>
+      <h4>RuleReranker · 兜底</h4>
+      <ol class="steps">
+        <li>查询词元集合 ∩ 标题词元集合 非空 → RRF 分数 <code>+0.1</code>，否则原分。</li>
+        <li>教学彩蛋：0.1 &gt; RRF 分数量级（≈0.016~0.033），所以标题命中几乎一票决定排序 —— 简单粗暴，但免费、可解释。</li>
+      </ol>
+      <h4 style="margin-top:18px">CrossEncoderReranker · 默认</h4>
+      <ol class="steps">
+        <li>把 <code>(query, title + text[:400])</code> 拼成 pair —— 文本截断 400 字控延迟，模型侧 <code>max_length=512</code>。</li>
+        <li><b>交叉编码</b>：query 与 doc 在同一个 Transformer 里逐 token 互相 attention，直接输出相关性分 —— 这正是双塔结构做不到的"深交互"。</li>
+        <li><code>predict(pairs)</code> 批量打分后重排序。<b>贵但准</b>，所以只用在 20 个候选上：粗排管快，精排管准。</li>
+      </ol>
+      <div class="mini"><b>双塔 vs 交叉编码器：</b>双塔（嵌入模型）query/doc 各自编码、可预建索引、快而浅；交叉编码器逐对联合编码、无法预建、慢而深 —— 这就是"先召回后重排"两阶段结构的根本原因。</div>
+    </div>
+    <div>
+      <div class="codebox"><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span>reranker.py · 两版实现</span></div>
+<pre><span class="c"># 兜底：标题命中 +0.1</span>
+<span class="k">class</span> <span class="f">RuleReranker</span>(Reranker):
+    <span class="k">def</span> <span class="f">rerank</span>(self, query, candidates, scores):
+        qtok = <span class="f">set</span>(tokenize(query))
+        combined = [s + (<span class="n">0.1</span> <span class="k">if</span> qtok & <span class="f">set</span>(tokenize(d.title)) <span class="k">else</span> <span class="n">0.0</span>)
+                    <span class="k">for</span> s, d <span class="k">in</span> <span class="f">zip</span>(scores, candidates)]
+        <span class="k">return</span> [candidates[i] <span class="k">for</span> i <span class="k">in</span> <span class="f">sorted</span>(...)]
+
+<span class="c"># 默认：交叉编码器联合打分（BAAI/bge-reranker-base，中文友好）</span>
+<span class="k">class</span> <span class="f">CrossEncoderReranker</span>(Reranker):
+    <span class="k">def</span> <span class="f">rerank</span>(self, query, candidates, scores):
+        pairs = [(query, <span class="s">f"{d.title}\n{d.text[:400]}"</span>)
+                 <span class="k">for</span> d <span class="k">in</span> candidates]        <span class="c"># 截断控延迟</span>
+        ce_scores = self._model.predict(pairs)  <span class="c"># 逐对精排</span>
+        <span class="k">return</span> [candidates[i] <span class="k">for</span> i <span class="k">in</span> <span class="f">sorted</span>(...)]
+
+<span class="k">def</span> <span class="f">make_reranker</span>():  <span class="c"># 交叉编码器优先，异常静默回退规则</span></pre></div>
+      <table>
+        <tr><th></th><th>规则兜底</th><th>交叉编码器</th></tr>
+        <tr><td>原理</td><td>标题词面命中</td><td>Transformer 深交互</td></tr>
+        <tr><td>理解"意思"</td><td>❌ 纯字面</td><td>✅ 语义级</td></tr>
+        <tr><td>成本</td><td>≈0</td><td>20 对 × 前向推理</td></tr>
+      </table>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════ 07 rag ═══════════ -->
+<section class="mod" id="rag">
+  <div class="mod-head">
+    <span class="num">MODULE 07</span>
+    <h3>RAG 生成器 <code>rag.py</code></h3>
+    <div class="badges"><span class="badge b-def">配置 key → LLM 带引用生成</span><span class="badge b-fb">未配 key → retrieval_only</span></div>
+  </div>
+  <p class="tagline">把 top-k 片段变成"有据可查"的答案。纯标准库 <code>urllib</code> 直连 OpenAI 兼容接口，无 SDK 依赖。</p>
+  <div class="card"><div class="grid">
+    <div>
+      <h4>运行机制</h4>
+      <ol class="steps">
+        <li>构造时读环境变量：<code>LLM_API_KEY</code>（兼容 <code>OPENAI_API_KEY</code>）、<code>LLM_BASE_URL</code>（默认 OpenAI，可指向任意兼容网关）、<code>LLM_MODEL</code>（默认 gpt-4o-mini）。</li>
+        <li>top-k 文档拼成带编号资料：<code>[1] 标题\n正文 …</code>；system 提示要求"只能引用资料内容，句末标注来源编号"。</li>
+        <li><code>temperature=0</code> 压随机性，POST <code>/chat/completions</code>，解析 <code>choices[0].message.content</code>。</li>
+        <li>返回三元组：<code>status</code> / <code>answer</code>（含 [1][2] 标注）/ <code>sources</code>（id+标题+摘要，用于前端溯源跳转）。</li>
+      </ol>
+      <div class="mini"><b>诚实降级：</b>没配 key 时不假装生成，<code>status="retrieval_only"</code> 直接返回编号片段拼接 —— 调用方一看 status 就知道这是检索不是编造。</div>
+    </div>
+    <div>
+      <div class="codebox"><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span>rag.py · prompt 与降级</span></div>
+<pre><span class="k">if not</span> self.api_key:                       <span class="c"># 诚实降级</span>
+    answer = <span class="s">"\n\n"</span>.<span class="f">join</span>(<span class="s">f"[{i}] {d.title}\n{d.text}"</span> ...)
+    <span class="k">return</span> {<span class="s">"status"</span>: <span class="s">"retrieval_only"</span>, ...}
+
+user_prompt = (
+    <span class="s">"根据下面的资料回答用户问题。只能引用资料内容，"</span>
+    <span class="s">"并在句末标注来源编号 [1]、[2]。"</span>
+    <span class="s">f"用户问题：{query}\n\n资料：\n{passages}"</span>)
+payload = {
+    <span class="s">"model"</span>: self.model,
+    <span class="s">"messages"</span>: [
+        {<span class="s">"role"</span>: <span class="s">"system"</span>, <span class="s">"content"</span>: <span class="s">"你是严谨的知识库问答助手…"</span>},
+        {<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: user_prompt}],
+    <span class="s">"temperature"</span>: <span class="n">0</span>}               <span class="c"># 压随机性</span>
+<span class="c"># urllib 直连 {base_url}/chat/completions，纯标准库</span></pre></div>
+      <div class="formula" style="font-style:normal;font-family:var(--mono);font-size:12.5px">
+        query + top-k 片段 → LLM → answer[1][2] + sources[]<br>
+        <span style="color:var(--faint)">检索结果即答案的证据链，每个 [n] 可回溯到原文档 id</span>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════ 08 evaluate ═══════════ -->
+<section class="mod" id="ev">
+  <div class="mod-head">
+    <span class="num">MODULE 08</span>
+    <h3>离线评估 <code>evaluate.py</code></h3>
+    <div class="badges"><span class="badge b-zero">61 行 · 标注驱动</span></div>
+  </div>
+  <p class="tagline">检索系统的"期末考试"：在标注查询集上对比 bm25 / vector / hybrid 三种模式，量化"找全"与"排准"。</p>
+  <div class="card"><div class="grid">
+    <div>
+      <h4>运行机制</h4>
+      <ol class="steps">
+        <li>读 <code>data/queries.jsonl</code>：每行一个 <code>query</code> + 人工标注的相关文档 id 集 <code>relevant</code>。</li>
+        <li>三种模式分别取 top-5：<b>bm25</b> 用 <code>_bm25_scores</code> 单路排序；<b>vector</b> 用 <code>_vector_scores</code>；<b>hybrid</b> 走完整 <code>retrieve()</code>（含重排）。</li>
+        <li>每条查询算 recall@5 与 MRR，最后对 16 条查询取平均，打印三行对照表。</li>
+      </ol>
+      <div class="formula">
+        recall@k = <span class="frac"><span class="top">|hits<sub>k</sub> ∩ relevant|</span><span class="bot">|relevant|</span></span>
+        &nbsp;&nbsp;·&nbsp;&nbsp;
+        MRR = <span class="frac"><span class="top">1</span><span class="bot">rank(首个相关文档)</span></span>
+        <span class="cap">找全了吗 · 排准了吗</span>
+      </div>
+    </div>
+    <div>
+      <div class="codebox"><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span>evaluate.py · 两个指标</span></div>
+<pre><span class="k">def</span> <span class="f">recall_at_k</span>(hits, relevant, k):
+    <span class="k">return</span> <span class="f">sum</span>(<span class="n">1</span> <span class="k">for</span> h <span class="k">in</span> hits[:k] <span class="k">if</span> h <span class="k">in</span> relevant) / <span class="f">len</span>(relevant)
+
+<span class="k">def</span> <span class="f">mrr</span>(hits, relevant):
+    <span class="k">for</span> rank, h <span class="k">in</span> <span class="f">enumerate</span>(hits, start=<span class="n">1</span>):
+        <span class="k">if</span> h <span class="k">in</span> relevant:
+            <span class="k">return</span> <span class="n">1.0</span> / rank      <span class="c"># 只看第一个相关的位置</span>
+    <span class="k">return</span> <span class="n">0.0</span></pre></div>
+      <table>
+        <tr><th>mode</th><th>recall@5</th><th>MRR</th><th>读法</th></tr>
+        <tr><td>bm25</td><td>1.000</td><td>0.938</td><td>词面硬匹配几乎全中</td></tr>
+        <tr><td>vector</td><td>1.000</td><td>1.000</td><td>语义排序全部第一位</td></tr>
+        <tr><td>hybrid</td><td>0.938</td><td>1.000</td><td>漏的是边界文档 d15</td></tr>
+      </table>
+      <div class="mini"><b>评估课：</b>17 篇小语料已触顶，聚合指标分不出组件优劣（规则与交叉编码器同分）—— <b>小语料看结构，大语料才见组件差距</b>。</div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════ 附: cli ═══════════ -->
+<section class="mod">
+  <div class="mod-head">
+    <span class="num">APPENDIX</span>
+    <h3>组装车间 <code>cli.py</code> 与数据模型 <code>models.py</code></h3>
+    <div class="badges"><span class="badge b-zero">32 + 12 行</span></div>
+  </div>
+  <p class="tagline">cli.py 是全链路的"总装线"：argparse 解析 → <code>from_jsonl</code> 建库 → <code>retrieve</code> 打印 → <code>--rag</code> 时再生成。models.py 用一个 12 行的 dataclass <code>Document(id, title, text)</code> 贯穿所有模块，避免循环导入。</p>
+  <div class="card">
+    <div class="codebox"><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span>一键复现 · 终端命令</span></div>
+<pre><span class="c"># 检索（默认已是 语义嵌入 + 交叉编码器精排）</span>
+.venv/bin/python -m hybrid_search.cli <span class="s">"检索结果怎么重排"</span> --top-k <span class="n">3</span>
+
+<span class="c"># 三模式对照评估</span>
+.venv/bin/python evaluate.py
+
+<span class="c"># 秒级回归测试（固定轻量组合：哈希嵌入 + 规则重排）</span>
+.venv/bin/python -m unittest discover -s tests</pre></div>
+  </div>
+</section>
+
+<p class="footnote">hybrid-retrieval · module tour · 生成于 2026-08-17 · 每段代码均节选自仓库真实源码 · 8 模块 / 5 分钟读完</p>
+</div></body></html>

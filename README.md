@@ -4,11 +4,11 @@
 
 它的目的是把一个"最小可用、可评估、可替换"的检索链路讲清楚——从数据接入、两种召回、结果融合到评估，而不是调一个黑盒检索接口。
 
-## 为什么默认用哈希嵌入而不是真模型
+## 为什么保留哈希嵌入作为兜底
 
-为了让仓库 clone 下来就能跑、不依赖 GPU 和大模型下载，默认嵌入器 `HashEmbedder` 用**字符 n-gram 哈希 + 子线性词频 + L2 归一化**生成确定性稀疏向量。它偏词法，能体现"向量化检索"的结构，但不是真正的语义向量。
+为了让仓库 clone 下来就能跑、不依赖 GPU 和大模型下载，未安装依赖时的兜底嵌入器 `HashEmbedder` 用**字符 n-gram 哈希 + 子线性词频 + L2 归一化**生成确定性稀疏向量。它偏词法，能体现"向量化检索"的结构，但不是真正的语义向量。
 
-要换成真正的语义模型，直接把 `SentenceTransformerEmbedder` 传进去即可（见下文"四项可插拔能力"）。
+安装 `sentence-transformers` 后无需改代码：默认嵌入器自动升级为 `SentenceTransformerEmbedder`（真语义向量），默认重排器自动升级为 `CrossEncoderReranker`（交叉编码器精排）；见 `make_embedder()` / `make_reranker()`。
 
 ## 目录结构
 
@@ -48,14 +48,14 @@ python -m unittest discover -s tests
 ## 检索链路
 
 1. 查询和文档统一分词（中文单字 + 双字，英文单词）。
-2. 两条独立召回：BM25 走词频逆文档频率，向量走 n-gram 哈希嵌入 + 余弦相似度。
+2. 两条独立召回：BM25 走词频逆文档频率，向量走语义嵌入 + 余弦相似度（兜底为 n-gram 哈希嵌入）。
 3. 对两条结果各自做 RRF 排名分数（`1 / (k + rank)`），相加融合，避开两种分数量纲不一致的问题。
-4. 轻量重排：查询词命中标题时加一个固定权重。
+4. 重排：默认交叉编码器对候选做联合精排（未装依赖时回退为"查询词命中标题加权"的规则重排）。
 5. 返回 top-k 文档，评估脚本按标注相关集统计 recall@k 和 MRR。
 
 ## 四项可插拔能力
 
-默认仓库零第三方依赖、clone 即可跑；下面四项都是"装了依赖/配了 key 就启用，否则走兜底"。
+默认仓库零第三方依赖、clone 即可跑；下面四项都是"装了依赖/配了 key 就启用，否则走兜底"，其中语义向量与交叉编码器重排在安装后即为默认。
 
 ### 1. 真正的语义向量
 
@@ -67,6 +67,7 @@ pip install sentence-transformers torch
 from hybrid_search.embedder import SentenceTransformerEmbedder
 from hybrid_search.retriever import HybridRetriever
 
+# 安装后 HybridRetriever(docs) 默认即用语义向量；显式传入可换模型
 retriever = HybridRetriever(docs, embedder=SentenceTransformerEmbedder())
 ```
 
@@ -91,6 +92,7 @@ pip install sentence-transformers torch
 ```python
 from hybrid_search.reranker import CrossEncoderReranker
 
+# 安装后 HybridRetriever(docs) 默认即用交叉编码器重排；显式传入可换模型
 retriever = HybridRetriever(docs, reranker=CrossEncoderReranker())
 ```
 
